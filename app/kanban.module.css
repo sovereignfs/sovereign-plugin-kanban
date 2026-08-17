@@ -175,6 +175,96 @@
   gap: var(--sv-space-3);
 }
 
+.memberAvatarStack {
+  display: flex;
+  align-items: center;
+}
+
+.stackedAvatar {
+  margin-left: calc(var(--sv-space-2) * -1);
+  border: 2px solid var(--sv-color-surface);
+}
+
+.stackedAvatar:first-child {
+  margin-left: 0;
+}
+
+.stackedAvatarOverflow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: calc(var(--sv-space-2) * -1);
+  border-radius: var(--sv-radius-full);
+  background: var(--sv-color-surface-sunken);
+  border: 2px solid var(--sv-color-surface);
+  font-size: var(--sv-font-size-label);
+  color: var(--sv-color-text-muted);
+}
+
+/* --- Share dialog (K.9) ----------------------------------------------------- */
+
+.memberList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+}
+
+.memberInfo {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.memberRoleBadge {
+  color: var(--sv-color-text-muted);
+}
+
+.memberPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+  padding-top: var(--sv-space-3);
+  border-top: 1px solid var(--sv-color-border);
+}
+
+.memberResults {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memberResultRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  width: 100%;
+  padding: var(--sv-space-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--sv-radius-md);
+  cursor: pointer;
+  text-align: left;
+}
+
+.memberResultRow:hover {
+  background: var(--sv-color-surface-sunken);
+}
+
 .listsRow {
   display: flex;
   align-items: flex-start;

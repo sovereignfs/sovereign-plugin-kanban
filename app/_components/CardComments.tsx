@@ -5,7 +5,7 @@ import { Avatar, Button, Textarea, Typography, useToast } from '@sovereignfs/ui'
 import { addComment } from '../actions';
 import { displayName } from '../_lib/identity';
 import { timeAgo } from '../_lib/time';
-import type { CardDetail } from '../_lib/queries';
+import type { BoardData, CardDetail } from '../_lib/queries';
 import type { CurrentUser } from './BoardView';
 import styles from '../kanban.module.css';
 
@@ -16,7 +16,15 @@ type Comment = CardDetail['comments'][number];
  * `kanban_comments.parent_id`) — a reply's "Reply" affordance is simply not
  * rendered, so the UI can't produce a nesting depth the server would reject.
  */
-export function CardComments({ card, currentUser }: { card: CardDetail; currentUser: CurrentUser }) {
+export function CardComments({
+  card,
+  members,
+  currentUser,
+}: {
+  card: CardDetail;
+  members: BoardData['members'];
+  currentUser: CurrentUser;
+}) {
   const toast = useToast();
   const topLevel = card.comments.filter((c) => c.parentId === null);
   const repliesByParent = new Map<string, Comment[]>();
@@ -43,13 +51,21 @@ export function CardComments({ card, currentUser }: { card: CardDetail; currentU
         <ul className={styles.commentList}>
           {topLevel.map((comment) => (
             <li key={comment.id}>
-              <CommentRow comment={comment} currentUser={currentUser} cardId={card.id} onError={onError} canReply />
+              <CommentRow
+                comment={comment}
+                members={members}
+                currentUser={currentUser}
+                cardId={card.id}
+                onError={onError}
+                canReply
+              />
               {(repliesByParent.get(comment.id) ?? []).length > 0 && (
                 <ul className={styles.commentReplies}>
                   {(repliesByParent.get(comment.id) ?? []).map((reply) => (
                     <li key={reply.id}>
                       <CommentRow
                         comment={reply}
+                        members={members}
                         currentUser={currentUser}
                         cardId={card.id}
                         onError={onError}
@@ -71,19 +87,21 @@ export function CardComments({ card, currentUser }: { card: CardDetail; currentU
 
 function CommentRow({
   comment,
+  members,
   currentUser,
   cardId,
   onError,
   canReply,
 }: {
   comment: Comment;
+  members: BoardData['members'];
   currentUser: CurrentUser;
   cardId: string;
   onError: (message: string) => void;
   canReply: boolean;
 }) {
   const [replying, setReplying] = useState(false);
-  const author = displayName(comment.authorId, currentUser);
+  const author = displayName(comment.authorId, currentUser, members);
 
   return (
     <div className={styles.commentRow}>

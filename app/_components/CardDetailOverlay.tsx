@@ -69,7 +69,7 @@ export function CardDetailOverlay({
         <CardAssignees card={cardDetail} members={board.members} currentUser={currentUser} />
         <CardDescription card={cardDetail} />
         <CardChecklist card={cardDetail} />
-        <CardComments card={cardDetail} currentUser={currentUser} />
+        <CardComments card={cardDetail} members={board.members} currentUser={currentUser} />
         <CardActivity card={cardDetail} board={board} currentUser={currentUser} />
       </div>
     </Dialog>

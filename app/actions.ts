@@ -12,7 +12,9 @@
  * 4. Returns `ActionResult` — domain failures are values, never throws.
  */
 import { revalidatePath } from 'next/cache';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { headers } from 'next/headers';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { sdk, type DirectoryUser } from '@sovereignfs/sdk';
 import type { KanbanTx } from './_db/client';
 import {
   needsRenormalize,
@@ -190,6 +192,152 @@ export async function deleteBoard(input: { boardId: string }): Promise<ActionRes
   await db.delete(schema.boards).where(eq(schema.boards.id, input.boardId));
   refresh();
   return ok('Board deleted.');
+}
+
+// ---------------------------------------------------------------------------
+// Board members & share (K.9)
+
+/**
+ * Directory search for the share dialog's "add a member" picker, already
+ * excluding current members — an owner searching for someone already on the
+ * board would otherwise just hit `addBoardMember`'s "already a member"
+ * denial for no reason. Owner-only, like the rest of membership management;
+ * returns an empty list rather than `fail()` since this isn't a mutation a
+ * form reports errors for, it's a live search-as-you-type result set.
+ */
+export async function searchBoardMemberCandidates(input: {
+  boardId: string;
+  query: string;
+}): Promise<DirectoryUser[]> {
+  const actor = await requireUser();
+  const db = await getDb();
+  if (!(await requireBoardOwner(db, input.boardId, actor))) return [];
+  const query = input.query.trim();
+  if (query.length < 2) return [];
+
+  const [results, memberRows] = await Promise.all([
+    sdk.directory.searchUsers({ query, limit: 8 }),
+    db
+      .select({ userId: schema.boardMembers.userId })
+      .from(schema.boardMembers)
+      .where(eq(schema.boardMembers.boardId, input.boardId)),
+  ]);
+  const memberIds = new Set(memberRows.map((m) => m.userId));
+  return results.filter((u) => !memberIds.has(u.id));
+}
+
+export async function addBoardMember(input: { boardId: string; userId: string }): Promise<ActionResult> {
+  const actor = await requireUser();
+  const db = await getDb();
+  if (!(await requireBoardOwner(db, input.boardId, actor))) return fail(NOT_FOUND_BOARD);
+
+  const existingRole = await getBoardRole(db, input.boardId, {
+    userId: input.userId,
+    tenantId: actor.tenantId,
+  });
+  if (existingRole) return fail('This person is already a member.');
+
+  const [target] = await sdk.directory.resolveUsers({ ids: [input.userId] });
+  if (!target) return fail('That person could not be found.');
+
+  const boardRows = await db
+    .select({ name: schema.boards.name })
+    .from(schema.boards)
+    .where(eq(schema.boards.id, input.boardId));
+  const boardName = boardRows[0]?.name ?? 'a board';
+
+  const now = Date.now();
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.boardMembers).values({
+      boardId: input.boardId,
+      userId: input.userId,
+      tenantId: actor.tenantId,
+      role: 'member',
+      addedBy: actor.userId,
+      createdAt: now,
+    });
+    await recordActivity(tx, {
+      tenantId: actor.tenantId,
+      boardId: input.boardId,
+      actorId: actor.userId,
+      type: 'member.added',
+      payload: { userId: input.userId },
+    });
+  });
+
+  // Fired after the transaction commits — a failed send shouldn't roll back
+  // a successful membership grant. The headers arg is required so the
+  // runtime can stamp `source`/`sourceType` from this plugin's id rather
+  // than "unknown" — plugins can't forge it themselves either way.
+  await sdk.notifications.send(
+    {
+      recipientUserId: input.userId,
+      title: 'Added to a board',
+      body: `You now have access to "${boardName}" on Kanban.`,
+      url: `/kanban/boards/${input.boardId}`,
+      category: 'info',
+    },
+    await headers(),
+  );
+
+  refresh();
+  return ok('Member added.');
+}
+
+export async function removeBoardMember(input: {
+  boardId: string;
+  userId: string;
+}): Promise<ActionResult> {
+  const actor = await requireUser();
+  const db = await getDb();
+  if (!(await requireBoardOwner(db, input.boardId, actor))) return fail(NOT_FOUND_BOARD);
+  if (input.userId === actor.userId) {
+    return fail('The owner can’t be removed — delete the board instead.');
+  }
+  const existingRole = await getBoardRole(db, input.boardId, {
+    userId: input.userId,
+    tenantId: actor.tenantId,
+  });
+  if (!existingRole) return fail('That person is not a member of this board.');
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(schema.boardMembers)
+      .where(
+        and(eq(schema.boardMembers.boardId, input.boardId), eq(schema.boardMembers.userId, input.userId)),
+      );
+    // A removed member still showing as an assignee on the board's cards
+    // would be confusing (assigned to someone with no access) — detach them
+    // from every card on this board too. No per-card `assignee.removed`
+    // activity for this bulk cleanup; the single `member.removed` row below
+    // covers it, matching how `deleteList`'s cascading card deletion
+    // doesn't emit per-card activity either.
+    const boardCardIds = (
+      await tx
+        .select({ id: schema.cards.id })
+        .from(schema.cards)
+        .where(eq(schema.cards.boardId, input.boardId))
+    ).map((c) => c.id);
+    if (boardCardIds.length > 0) {
+      await tx
+        .delete(schema.cardAssignees)
+        .where(
+          and(
+            eq(schema.cardAssignees.userId, input.userId),
+            inArray(schema.cardAssignees.cardId, boardCardIds),
+          ),
+        );
+    }
+    await recordActivity(tx, {
+      tenantId: actor.tenantId,
+      boardId: input.boardId,
+      actorId: actor.userId,
+      type: 'member.removed',
+      payload: { userId: input.userId },
+    });
+  });
+  refresh();
+  return ok('Member removed.');
 }
 
 // ---------------------------------------------------------------------------
@@ -604,6 +752,28 @@ export async function assignMember(input: { cardId: string; userId: string }): P
       payload: { userId: input.userId },
     });
   });
+
+  // No self-notification for self-assignment. Fired after the transaction
+  // commits, deep-linking straight to the card per SPEC's notification URL
+  // convention (`/kanban/boards/<id>?card=<id>`).
+  if (input.userId !== actor.userId) {
+    const cardRows = await db
+      .select({ title: schema.cards.title })
+      .from(schema.cards)
+      .where(eq(schema.cards.id, input.cardId));
+    const cardTitle = cardRows[0]?.title ?? 'a card';
+    await sdk.notifications.send(
+      {
+        recipientUserId: input.userId,
+        title: 'Assigned to a card',
+        body: `You were assigned to "${cardTitle}" on Kanban.`,
+        url: `/kanban/boards/${access.boardId}?card=${input.cardId}`,
+        category: 'info',
+      },
+      await headers(),
+    );
+  }
+
   refresh();
   return ok('Assigned.');
 }

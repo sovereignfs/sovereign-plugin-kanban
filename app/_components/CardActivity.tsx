@@ -3,10 +3,11 @@
 import { useState, useTransition } from 'react';
 import { Button, Typography } from '@sovereignfs/ui';
 import { getMoreCardActivity } from '../actions';
+import { activityCursorFor, type ActivityCursor } from '../_lib/activity-pagination';
 import { describeActivity } from '../_lib/activity-copy';
 import { displayName } from '../_lib/identity';
 import { timeAgo } from '../_lib/time';
-import { activityCursorFor, type ActivityCursor, type BoardData, type CardDetail } from '../_lib/queries';
+import type { BoardData, CardDetail } from '../_lib/queries';
 import type { CurrentUser } from './BoardView';
 import styles from '../kanban.module.css';
 
@@ -75,11 +76,11 @@ export function CardActivity({
           {items.map((item) => (
             <li key={item.id}>
               <Typography variant="caption">
-                <strong>{displayName(item.actorId, currentUser)}</strong>{' '}
+                <strong>{displayName(item.actorId, currentUser, board.members)}</strong>{' '}
                 {describeActivity(item, {
                   lists: board.lists,
                   labels: board.labels,
-                  resolveName: (userId) => displayName(userId, currentUser),
+                  resolveName: (userId) => displayName(userId, currentUser, board.members),
                 })}
                 {' · '}
                 {timeAgo(item.createdAt)}

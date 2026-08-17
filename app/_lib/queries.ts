@@ -5,9 +5,12 @@
  * viewer doesn't belong to.
  */
 import { and, asc, desc, eq, inArray, lt, or } from 'drizzle-orm';
+import { sdk } from '@sovereignfs/sdk';
 import type { KanbanDb } from '../_db/client';
 import * as schema from '../_db/schema';
+import { ACTIVITY_PAGE_SIZE, activityCursorFor, type ActivityCursor } from './activity-pagination';
 import type { Actor } from './authz';
+import type { MemberIdentity } from './identity';
 
 // ---------------------------------------------------------------------------
 // Home payload
@@ -124,7 +127,7 @@ export interface BoardData {
   color: string;
   projectId: string;
   role: 'owner' | 'member';
-  members: Array<{ userId: string; role: string }>;
+  members: Array<MemberIdentity & { role: string }>;
   labels: Array<{ id: string; name: string; color: string }>;
   lists: BoardList[];
   cards: BoardCardSummary[];
@@ -157,7 +160,7 @@ export async function getBoardData(
   const board = boardRows[0];
   if (!board) return null;
 
-  const [members, boardLabels, listRows, cardRows] = await Promise.all([
+  const [memberRows, boardLabels, listRows, cardRows] = await Promise.all([
     db
       .select({ userId: schema.boardMembers.userId, role: schema.boardMembers.role })
       .from(schema.boardMembers)
@@ -248,6 +251,23 @@ export async function getBoardData(
   const countByList = new Map<string, number>();
   for (const c of cards) countByList.set(c.listId, (countByList.get(c.listId) ?? 0) + 1);
 
+  // K.9: resolve each member's directory name/email so avatars, the share
+  // dialog, and every displayName() call site can show a real person
+  // instead of a raw id. A departed/deactivated user simply isn't in the
+  // result — name/email fall back to null, and displayName() falls back to
+  // the raw id.
+  const directoryUsers =
+    memberRows.length === 0
+      ? []
+      : await sdk.directory.resolveUsers({ ids: memberRows.map((m) => m.userId) });
+  const directoryById = new Map(directoryUsers.map((u) => [u.id, u]));
+  const members: Array<MemberIdentity & { role: string }> = memberRows.map((m) => ({
+    userId: m.userId,
+    role: m.role,
+    name: directoryById.get(m.userId)?.name ?? null,
+    email: directoryById.get(m.userId)?.email ?? null,
+  }));
+
   return {
     id: board.id,
     name: board.name,
@@ -264,7 +284,10 @@ export async function getBoardData(
 // ---------------------------------------------------------------------------
 // Card detail payload
 
-export const ACTIVITY_PAGE_SIZE = 20;
+// Re-exported so existing server-side callers (actions.ts, tests) don't need
+// to know these moved to a dedicated sdk-free module — see
+// activity-pagination.ts's own doc comment for why they had to move.
+export { ACTIVITY_PAGE_SIZE, activityCursorFor, type ActivityCursor } from './activity-pagination';
 
 export interface CardDetail {
   id: string;
@@ -388,19 +411,9 @@ export async function getCardDetail(
 // `getMoreCardActivity` action) for subsequent pages using the same
 // `(createdAt, id)` cursor and ordering, so a page boundary can never
 // duplicate or skip a row that shares a millisecond timestamp with its
-// neighbour.
-
-export interface ActivityCursor {
-  createdAt: number;
-  id: string;
-}
-
-/** The cursor for the page *after* `items`, or null when `items` wasn't a full page (no more rows). */
-export function activityCursorFor(items: CardDetail['activity']): ActivityCursor | null {
-  if (items.length < ACTIVITY_PAGE_SIZE) return null;
-  const last = items[items.length - 1];
-  return last ? { createdAt: last.createdAt, id: last.id } : null;
-}
+// neighbour. `ActivityCursor`/`activityCursorFor` themselves live in
+// `activity-pagination.ts` (see that file's doc comment) and are re-exported
+// above.
 
 export interface ActivityPage {
   items: CardDetail['activity'];

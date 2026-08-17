@@ -1,6 +1,6 @@
 # Sovereign Kanban — Roadmap
 
-**Manifest version:** 0.8.0 · **Last updated:** 2026-08-17
+**Manifest version:** 0.9.0 · **Last updated:** 2026-08-17
 
 Chronological build index — one row per PR, platform-`ROADMAP.md` style. Full
 task detail lives in [SPEC.md](SPEC.md); the product concept in
@@ -29,7 +29,7 @@ on the previous row unless noted.
 | 0.6.0 | Card detail modal (web): core fields    | ✅     | [K.6](SPEC.md#k6--card-detail-modal-web-core-fields)       |
 | 0.7.0 | Web drag-and-drop                       | ✅     | [K.7](SPEC.md#k7--web-drag-and-drop)                       |
 | 0.8.0 | Comments, replies & activity log        | ✅     | [K.8](SPEC.md#k8--comments-replies--activity-log)          |
-| 0.9.0 | Board members & share                   | ⬜     | [K.9](SPEC.md#k9--board-members--share)                    |
+| 0.9.0 | Board members & share                   | ✅     | [K.9](SPEC.md#k9--board-members--share)                    |
 | 0.10.0 | Board search/filter (web)              | ⬜     | [K.10](SPEC.md#k10--board-searchfilter-web)                |
 | 0.11.0 | Inbox (web) & notification wiring      | ⬜     | [K.11](SPEC.md#k11--inbox-web--notification-wiring)        |
 

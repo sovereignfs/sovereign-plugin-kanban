@@ -12,12 +12,30 @@ import { createTestDb, type TestDb } from '../_db/__tests__/test-db';
 import { MIN_GAP, POSITION_STEP } from '../_db/position';
 import * as schema from '../_db/schema';
 
+interface FakeDirectoryUser {
+  id: string;
+  email: string;
+  name: string | null;
+  image: string | null;
+}
+
+interface SentNotification {
+  recipientUserId: string;
+  title: string;
+  body?: string;
+  url?: string;
+  category?: string;
+}
+
 const harness = vi.hoisted(() => ({
   currentUser: null as { id: string; tenantId: string } | null,
   dbClient: null as unknown,
+  directoryUsers: new Map<string, FakeDirectoryUser>(),
+  sentNotifications: [] as SentNotification[],
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
 vi.mock('@sovereignfs/sdk', () => ({
   sdk: {
     auth: {
@@ -27,6 +45,25 @@ vi.mock('@sovereignfs/sdk', () => ({
       }),
     },
     db: { getClient: vi.fn(async () => harness.dbClient) },
+    directory: {
+      resolveUsers: vi.fn(async ({ ids }: { ids: string[] }) =>
+        ids
+          .map((id) => harness.directoryUsers.get(id))
+          .filter((u): u is FakeDirectoryUser => u !== undefined),
+      ),
+      searchUsers: vi.fn(async ({ query }: { query: string }) =>
+        [...harness.directoryUsers.values()].filter(
+          (u) =>
+            u.name?.toLowerCase().includes(query.toLowerCase()) ||
+            u.email.toLowerCase().includes(query.toLowerCase()),
+        ),
+      ),
+    },
+    notifications: {
+      send: vi.fn(async (input: SentNotification) => {
+        harness.sentNotifications.push(input);
+      }),
+    },
   },
 }));
 
@@ -39,6 +76,10 @@ let t: TestDb;
 
 function actAs(user: { id: string; tenantId: string } | null): void {
   harness.currentUser = user;
+}
+
+function registerDirectoryUser(user: { id: string; email: string; name: string | null }): void {
+  harness.directoryUsers.set(user.id, { ...user, image: null });
 }
 
 /** Narrow a possibly-undefined value (noUncheckedIndexedAccess / find) with a hard failure. */
@@ -68,6 +109,8 @@ beforeEach(async () => {
 afterEach(() => {
   t.close();
   actAs(null);
+  harness.directoryUsers.clear();
+  harness.sentNotifications = [];
 });
 
 describe('authorization — non-members and non-creators are denied without side effects', () => {
@@ -672,5 +715,159 @@ describe('activity (K.8)', () => {
 
     const allIds = new Set([...page1.map((a) => a.id), ...page2.items.map((a) => a.id)]);
     expect(allIds.size).toBe(25);
+  });
+});
+
+describe('board members & share (K.9)', () => {
+  const newcomer = { id: 'user-newcomer', tenantId: 'default' };
+
+  it('denies member management to a non-owner without side effects', async () => {
+    const { boardId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
+    const member = must(
+      (await t.db.select().from(schema.boardMembers)).find((m) => m.userId !== owner.id),
+      'added member',
+    );
+
+    // A plain member (just added) can't manage membership either — only the owner can.
+    actAs(newcomer);
+    const denials = await Promise.all([
+      actions.addBoardMember({ boardId, userId: outsider.id }),
+      actions.removeBoardMember({ boardId, userId: owner.id }),
+      actions.searchBoardMemberCandidates({ boardId, query: 'out' }),
+    ]);
+    expect(denials[0].ok).toBe(false);
+    expect(denials[1].ok).toBe(false);
+    expect(denials[2]).toEqual([]);
+
+    actAs(outsider);
+    expect(await actions.addBoardMember({ boardId, userId: outsider.id })).toEqual({
+      ok: false,
+      error: 'Board not found.',
+    });
+    expect(await actions.removeBoardMember({ boardId, userId: member.userId })).toEqual({
+      ok: false,
+      error: 'Board not found.',
+    });
+
+    expect(await t.db.select().from(schema.boardMembers)).toHaveLength(2); // owner + newcomer only
+  });
+
+  it('adds a member, records activity, and notifies them with a board deep link', async () => {
+    const { boardId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+
+    expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
+    const rows = await t.db.select().from(schema.boardMembers);
+    expect(rows).toHaveLength(2);
+    expect(must(rows.find((m) => m.userId === newcomer.id), 'newcomer row').role).toBe('member');
+
+    const activityTypes = (await t.db.select().from(schema.activity)).map((a) => a.type);
+    expect(activityTypes).toContain('member.added');
+
+    expect(harness.sentNotifications).toHaveLength(1);
+    const notification = must(harness.sentNotifications[0], 'notification');
+    expect(notification.recipientUserId).toBe(newcomer.id);
+    expect(notification.url).toBe(`/kanban/boards/${boardId}`);
+  });
+
+  it('rejects adding someone already a member, and someone not in the directory', async () => {
+    const { boardId } = await setup();
+    actAs(owner);
+
+    expect(await actions.addBoardMember({ boardId, userId: owner.id })).toEqual({
+      ok: false,
+      error: 'This person is already a member.',
+    });
+    expect(await actions.addBoardMember({ boardId, userId: 'user-ghost' })).toEqual({
+      ok: false,
+      error: 'That person could not be found.',
+    });
+    expect(await t.db.select().from(schema.boardMembers)).toHaveLength(1);
+    expect(harness.sentNotifications).toHaveLength(0);
+  });
+
+  it('removes a member, records activity, and detaches them from the board’s cards', async () => {
+    const { boardId, listId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
+
+    expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    expect((await actions.assignMember({ cardId: card.id, userId: newcomer.id })).ok).toBe(true);
+    expect(await t.db.select().from(schema.cardAssignees)).toHaveLength(1);
+
+    expect((await actions.removeBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
+    expect(await t.db.select().from(schema.boardMembers)).toHaveLength(1);
+    expect(await t.db.select().from(schema.cardAssignees)).toHaveLength(0);
+
+    const activityTypes = (await t.db.select().from(schema.activity)).map((a) => a.type);
+    expect(activityTypes).toContain('member.removed');
+  });
+
+  it('rejects removing the owner, and removing a non-member', async () => {
+    const { boardId } = await setup();
+    actAs(owner);
+    expect(await actions.removeBoardMember({ boardId, userId: owner.id })).toEqual({
+      ok: false,
+      error: 'The owner can’t be removed — delete the board instead.',
+    });
+    expect(await actions.removeBoardMember({ boardId, userId: outsider.id })).toEqual({
+      ok: false,
+      error: 'That person is not a member of this board.',
+    });
+  });
+
+  it('search excludes existing members from candidates', async () => {
+    const { boardId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: owner.id, email: 'owner@example.com', name: 'Board Owner' });
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+
+    const results = await actions.searchBoardMemberCandidates({ boardId, query: 'New' });
+    const ids = results.map((u) => u.id);
+    expect(ids).toContain(newcomer.id);
+    expect(ids).not.toContain(owner.id); // already a member
+  });
+
+  it('notifies an assignee, but not on self-assignment', async () => {
+    const { boardId, listId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
+    harness.sentNotifications = []; // clear the "added to board" notification from setup
+
+    expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+
+    expect((await actions.assignMember({ cardId: card.id, userId: owner.id })).ok).toBe(true);
+    expect(harness.sentNotifications).toHaveLength(0); // self-assignment
+
+    expect((await actions.assignMember({ cardId: card.id, userId: newcomer.id })).ok).toBe(true);
+    expect(harness.sentNotifications).toHaveLength(1);
+    const notification = must(harness.sentNotifications[0], 'notification');
+    expect(notification.recipientUserId).toBe(newcomer.id);
+    expect(notification.url).toBe(`/kanban/boards/${boardId}?card=${card.id}`);
+  });
+
+  it('getBoardData resolves member names and emails via the directory', async () => {
+    const { boardId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: owner.id, email: 'owner@example.com', name: 'Board Owner' });
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
+
+    const { getBoardData } = await import('../_lib/queries');
+    const board = await getBoardData(t.db, boardId, { userId: owner.id, tenantId: owner.tenantId });
+    if (!board) throw new Error('expected board data');
+    const members = board.members;
+    expect(must(members.find((m) => m.userId === owner.id), 'owner member').name).toBe('Board Owner');
+    expect(must(members.find((m) => m.userId === newcomer.id), 'newcomer member').email).toBe(
+      'newcomer@example.com',
+    );
   });
 });

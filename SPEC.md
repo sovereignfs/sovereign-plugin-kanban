@@ -7,7 +7,80 @@
 
 ## Status
 
-🚧 In progress — K.1–K.8 complete. K.8: comments, replies, and the card
+🚧 In progress — K.1–K.9 complete. K.9: board members & share shipped —
+real multi-user boards. `sdk.directory.resolveUsers()` now resolves every
+board member's name/email inside `getBoardData` (`app/_lib/queries.ts`),
+carried on `BoardData.members`; `_lib/identity.ts`'s `displayName()` gained
+an optional `members` param so assignees (K.6), comments (K.8), and activity
+(K.8) all show real names instead of raw ids the moment someone other than
+the current session is involved — the one gap those tasks deliberately left
+open pending this task. Three new actions: `addBoardMember`/
+`removeBoardMember` (owner-only, `requireBoardOwner`) and
+`searchBoardMemberCandidates` (owner-only directory search, excludes
+existing members from results so the "already a member" denial is never hit
+by the UI in practice). Removing a member also detaches them from every
+`cardAssignees` row on that board's cards — a removed member still showing
+as an assignee with no access would be confusing — in one bulk cleanup, not
+per-card activity, mirroring `deleteList`'s cascading card deletion.
+`BoardShareDialog.tsx` is the header CTA: any member can open it to see who
+has access; only the owner sees the remove buttons and the add-a-person
+search picker (debounced, matching Console's `groups` picker pattern but in
+this plugin's own DS-first style). The board header also gained a stacked
+`Avatar` row (max 4 + overflow badge) replacing K.5's plain "N members"
+caption text. Notifications: `sdk.notifications.send()` fires on
+added-to-board and assigned-to-card (not on self-assignment), both
+deep-linking per SPEC's `/kanban/boards/<id>[?card=<id>]` convention.
+
+**Two real bugs caught live, neither by tests:**
+
+1. Adding `sdk.directory.resolveUsers()` to `queries.ts` broke the whole
+   board page with a genuine (not stale-cache) Next.js build error —
+   `You're importing a component that needs "next/headers"`, tracing through
+   `@sovereignfs/sdk`'s barrel to its own unrelated `activity.ts` module.
+   Root cause: `CardActivity.tsx` (K.8, a client component) imports
+   `activityCursorFor` — a real runtime function, not just a type — from
+   `queries.ts`. A file with no `'use server'` directive gets fully bundled
+   into any client component that imports a non-type binding from it, so
+   `queries.ts` now newly importing `sdk` at module scope dragged the SDK's
+   `next/headers`-using code into the client bundle too, which Next.js
+   correctly rejects. (`actions.ts`'s own sdk usage never hit this — a
+   `'use server'` file's exports become opaque RPC stubs for client
+   importers instead of being bundled for real.) Fixed by extracting
+   `ACTIVITY_PAGE_SIZE`/`ActivityCursor`/`activityCursorFor` into a new,
+   deliberately sdk-free `_lib/activity-pagination.ts`; `CardActivity.tsx`
+   now imports the runtime function from there directly, `queries.ts`
+   re-exports it for server-side callers (`actions.ts`, tests) that don't
+   need to know it moved.
+2. Both new `sdk.notifications.send()` calls initially omitted the second
+   `requestHeaders` argument the docs require (`docs/plugin-development.md`'s
+   `notifications` section) — compiled fine, sent fine, no error anywhere,
+   but every notification recorded `source: "unknown"` instead of
+   `"io.openfs.kanban"`, confirmed by querying the live dev sqld instance
+   directly (`curl` against its `/v2/pipeline` HTTP endpoint) rather than
+   trusting the absence of a thrown error. Fixed by passing `await headers()`
+   from `next/headers` to both calls, matching the documented convention;
+   re-verified against the live database that a fresh notification correctly
+   carries the plugin's own source id.
+
+Verified live end-to-end in dev, including against real platform data, not
+stubs: opened the share dialog, searched the actual `sdk.directory` (found a
+real seeded second account, "Dev Owner"), added them (member row appeared,
+header avatar stack updated to two avatars, `member.added` activity recorded
+with the resolved name via `describeActivity`'s enriched
+`member.added`/`removed` copy), confirmed the assignee picker on an existing
+card now shows "Dev Owner"/"Dev User" instead of raw ids, assigned the new
+member (activity: `"Dev User assigned Dev Owner"`), removed them again
+(member row gone, avatar stack back to one, their card assignment cascaded
+away), and queried the live sqld database directly to confirm both
+notifications landed with correct recipient ids and deep links
+(`/kanban/boards/<id>` and `/kanban/boards/<id>?card=<id>`). **Not verified,
+environment-limited:** SPEC's checklist calls for a two-user manual test
+(non-member 403s until added, then sees the board) — this session has a
+single authenticated browser context, so that specific flow rests on K.3's
+existing membership-gated queries (`getBoardData`/`getCardDetail` already
+return null → `notFound()` for a non-member, unchanged by this task) plus
+this task's own automated authz-denial tests, not a live second-session
+walkthrough. K.8: comments, replies, and the card
 activity log shipped. `addComment({cardId, body, parentId?})` is the single
 action for both — one level of replies only (schema's existing
 `kanban_comments.parent_id` nullable-self-reference), enforced server-side

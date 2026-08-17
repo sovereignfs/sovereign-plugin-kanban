@@ -11,14 +11,16 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext } from '@dnd-kit/sortable';
-import { Button, EmptyState, PageHeader, Typography, useToast } from '@sovereignfs/ui';
+import { Avatar, Button, EmptyState, PageHeader, useToast } from '@sovereignfs/ui';
 import { moveCard, reorderList } from '../actions';
 import { useBoardDndSensors } from '../_lib/dndSensors';
+import { displayName } from '../_lib/identity';
 import { applyOrder, listIdFromDropId, neighborsOf, seedOrder } from '../_lib/order';
 import type { BoardCardSummary, BoardData, BoardList, CardDetail } from '../_lib/queries';
 import styles from '../kanban.module.css';
 import { AddListSlot } from './AddListSlot';
 import { BoardSettingsDialog } from './BoardSettingsDialog';
+import { BoardShareDialog } from './BoardShareDialog';
 import { CardDetailOverlay } from './CardDetailOverlay';
 import { CardDragPreview } from './CardTile';
 import { ListColumn, ListDragPreview } from './ListColumn';
@@ -60,6 +62,7 @@ export function BoardView({
 }) {
   const toast = useToast();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag>(null);
   const [, startTransition] = useTransition();
   const sensors = useBoardDndSensors();
@@ -154,9 +157,6 @@ export function BoardView({
     });
   }
 
-  const memberLabel =
-    board.members.length === 1 ? '1 member' : `${board.members.length} members`;
-
   return (
     <>
       <PageHeader
@@ -164,7 +164,10 @@ export function BoardView({
         headingLevel={1}
         action={
           <div className={styles.boardHeaderActions}>
-            <Typography variant="caption">{memberLabel}</Typography>
+            <MemberAvatarStack members={board.members} currentUser={currentUser} />
+            <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)}>
+              Share
+            </Button>
             {board.role === 'owner' && (
               <Button variant="secondary" size="sm" onClick={() => setSettingsOpen(true)}>
                 Settings
@@ -205,8 +208,40 @@ export function BoardView({
         <BoardSettingsDialog board={board} onClose={() => setSettingsOpen(false)} />
       )}
 
+      {shareOpen && (
+        <BoardShareDialog board={board} currentUser={currentUser} onClose={() => setShareOpen(false)} />
+      )}
+
       <CardDetailOverlay board={board} cardDetail={cardDetail} currentUser={currentUser} />
     </>
+  );
+}
+
+const MAX_STACKED_AVATARS = 4;
+
+function MemberAvatarStack({
+  members,
+  currentUser,
+}: {
+  members: BoardData['members'];
+  currentUser: CurrentUser;
+}) {
+  const shown = members.slice(0, MAX_STACKED_AVATARS);
+  const overflow = members.length - shown.length;
+  const label = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
+
+  return (
+    <div className={styles.memberAvatarStack} aria-label={label} title={label}>
+      {shown.map((member) => (
+        <Avatar
+          key={member.userId}
+          name={displayName(member.userId, currentUser, members)}
+          size="sm"
+          className={styles.stackedAvatar}
+        />
+      ))}
+      {overflow > 0 && <span className={styles.stackedAvatarOverflow}>+{overflow}</span>}
+    </div>
   );
 }
 

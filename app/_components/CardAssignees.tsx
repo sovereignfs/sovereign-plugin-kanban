@@ -5,7 +5,7 @@ import { Avatar, Button, Checkbox, Icon, Popover, Typography, useToast } from '@
 import { assignMember, unassignMember } from '../actions';
 import { displayName } from '../_lib/identity';
 import type { CurrentUser } from './BoardView';
-import type { CardDetail } from '../_lib/queries';
+import type { BoardData, CardDetail } from '../_lib/queries';
 import styles from '../kanban.module.css';
 
 export function CardAssignees({
@@ -14,7 +14,7 @@ export function CardAssignees({
   currentUser,
 }: {
   card: CardDetail;
-  members: Array<{ userId: string; role: string }>;
+  members: BoardData['members'];
   currentUser: CurrentUser;
 }) {
   const toast = useToast();
@@ -43,7 +43,7 @@ export function CardAssignees({
       <Typography variant="label">Assignees</Typography>
       <div className={styles.assigneeRow}>
         {card.assignees.map((a) => (
-          <Avatar key={a.userId} name={displayName(a.userId, currentUser)} size="sm" />
+          <Avatar key={a.userId} name={displayName(a.userId, currentUser, members)} size="sm" />
         ))}
         <Popover
           trigger={
@@ -70,7 +70,7 @@ export function CardAssignees({
                   <Checkbox
                     checked={assignedIds.has(member.userId)}
                     disabled={pendingId === member.userId}
-                    label={displayName(member.userId, currentUser)}
+                    label={displayName(member.userId, currentUser, members)}
                     onChange={(checked) => toggle(member.userId, checked)}
                   />
                 </li>

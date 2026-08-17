@@ -8,9 +8,8 @@
  * (recorded with no `cardId`, see `activity.ts`) and so never actually reach
  * a card-scoped feed like this one — their copy exists anyway for
  * completeness and for K.11's board/Inbox activity feed, which reuses this
- * function. `member.added/removed` aren't emitted by any action yet (K.9);
- * the `default` case keeps this function forward-compatible with activity
- * types added by later tasks without requiring an edit here first.
+ * function. The `default` case keeps this function forward-compatible with
+ * activity types added by later tasks without requiring an edit here first.
  */
 import type { BoardData, CardDetail } from './queries';
 
@@ -87,10 +86,18 @@ export function describeActivity(item: ActivityItem, ctx: ActivityCopyContext): 
       return 'deleted a list';
     case 'board.created':
       return 'created the board';
-    case 'member.added':
-      return 'added a member';
-    case 'member.removed':
-      return 'removed a member';
+    case 'member.added': {
+      const userId = payload.userId;
+      return typeof userId === 'string'
+        ? `added ${ctx.resolveName(userId)} to the board`
+        : 'added a member';
+    }
+    case 'member.removed': {
+      const userId = payload.userId;
+      return typeof userId === 'string'
+        ? `removed ${ctx.resolveName(userId)} from the board`
+        : 'removed a member';
+    }
     default:
       return 'updated the board';
   }
