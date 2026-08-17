@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <rect width="1200" height="760" fill="#fafafa"/>
+
+  <!-- Secondary sidebar -->
+  <rect x="0" y="0" width="220" height="760" fill="#f4f4f5"/>
+  <line x1="220" y1="0" x2="220" y2="760" stroke="#e4e4e7"/>
+  <rect x="12" y="16" width="196" height="36" rx="8" fill="#e4e4e7"/>
+  <text x="28" y="39" font-size="14" font-weight="600" fill="#18181b">Boards</text>
+  <text x="28" y="79" font-size="14" fill="#52525b">Inbox</text>
+  <circle cx="196" cy="74" r="9" fill="#d4d4d8"/>
+  <text x="192" y="78" font-size="11" fill="#18181b">2</text>
+
+  <!-- Page header -->
+  <text x="252" y="52" font-size="24" font-weight="700" fill="#18181b">Boards</text>
+  <rect x="1044" y="28" width="124" height="36" rx="8" fill="#18181b"/>
+  <text x="1064" y="51" font-size="14" fill="#ffffff">New project</text>
+
+  <!-- Project section: Marketing -->
+  <text x="252" y="116" font-size="17" font-weight="600" fill="#18181b">Marketing</text>
+  <text x="360" y="116" font-size="13" fill="#71717a">3 boards</text>
+  <text x="1148" y="116" font-size="16" fill="#71717a">•••</text>
+
+  <!-- Board cards row -->
+  <g>
+    <rect x="252" y="136" width="216" height="112" rx="10" fill="#ffffff" stroke="#e4e4e7"/>
+    <rect x="252" y="136" width="216" height="34" rx="10" fill="#b5c9e8"/>
+    <rect x="252" y="156" width="216" height="14" fill="#ffffff"/>
+    <text x="268" y="204" font-size="15" font-weight="600" fill="#18181b">Website relaunch</text>
+  </g>
+  <g>
+    <rect x="484" y="136" width="216" height="112" rx="10" fill="#ffffff" stroke="#e4e4e7"/>
+    <rect x="484" y="136" width="216" height="34" rx="10" fill="#c9e0c4"/>
+    <rect x="484" y="156" width="216" height="14" fill="#ffffff"/>
+    <text x="500" y="204" font-size="15" font-weight="600" fill="#18181b">Campaigns 2026</text>
+  </g>
+  <g>
+    <rect x="716" y="136" width="216" height="112" rx="10" fill="#ffffff" stroke="#e4e4e7"/>
+    <rect x="716" y="136" width="216" height="34" rx="10" fill="#e8d3b5"/>
+    <rect x="716" y="156" width="216" height="14" fill="#ffffff"/>
+    <text x="732" y="204" font-size="15" font-weight="600" fill="#18181b">Content calendar</text>
+  </g>
+  <g>
+    <rect x="948" y="136" width="216" height="112" rx="10" fill="none" stroke="#d4d4d8" stroke-dasharray="6 4"/>
+    <text x="1010" y="196" font-size="14" fill="#52525b">＋ New board</text>
+  </g>
+
+  <!-- Project section: Personal -->
+  <text x="252" y="316" font-size="17" font-weight="600" fill="#18181b">Personal</text>
+  <text x="336" y="316" font-size="13" fill="#71717a">1 board</text>
+  <text x="1148" y="316" font-size="16" fill="#71717a">•••</text>
+  <g>
+    <rect x="252" y="336" width="216" height="112" rx="10" fill="#ffffff" stroke="#e4e4e7"/>
+    <rect x="252" y="336" width="216" height="34" rx="10" fill="#d8c4e0"/>
+    <rect x="252" y="356" width="216" height="14" fill="#ffffff"/>
+    <text x="268" y="404" font-size="15" font-weight="600" fill="#18181b">Home renovation</text>
+  </g>
+  <g>
+    <rect x="484" y="336" width="216" height="112" rx="10" fill="none" stroke="#d4d4d8" stroke-dasharray="6 4"/>
+    <text x="546" y="396" font-size="14" fill="#52525b">＋ New board</text>
+  </g>
+
+  <!-- Shared-with-you project (not creator: no ••• menu, no New board card) -->
+  <text x="252" y="516" font-size="17" font-weight="600" fill="#18181b">Design team</text>
+  <text x="356" y="516" font-size="13" fill="#71717a">1 board · shared with you</text>
+  <g>
+    <rect x="252" y="536" width="216" height="112" rx="10" fill="#ffffff" stroke="#e4e4e7"/>
+    <rect x="252" y="536" width="216" height="34" rx="10" fill="#e0c4c4"/>
+    <rect x="252" y="556" width="216" height="14" fill="#ffffff"/>
+    <text x="268" y="604" font-size="15" font-weight="600" fill="#18181b">Design reviews</text>
+  </g>
+
+  <!-- Annotations -->
+  <text x="252" y="700" font-size="12" fill="#a1a1aa">Board card: color band (from board's palette color) + name. Whole card links to the board.</text>
+  <text x="252" y="720" font-size="12" fill="#a1a1aa">Project ••• menu: Rename project · Delete project. Shown only to the project's creator.</text>
+  <text x="252" y="740" font-size="12" fill="#a1a1aa">"Shared with you" section appears when you're a member of boards in someone else's project.</text>
+</svg>

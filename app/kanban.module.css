@@ -1,0 +1,541 @@
+/* Layout-only styles — visual styling comes from @sovereignfs/ui components
+   and semantic tokens. No padding/max-width on page roots (PageContainer
+   owns those); no color literals (board colors are data, inline-styled). */
+
+.shell {
+  display: flex;
+  min-height: 100%;
+  align-items: stretch;
+}
+
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* --- Secondary sidebar (web only; mobile layout is K.12) ----------------- */
+
+.sidebar {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-1);
+  padding: var(--sv-space-4) var(--sv-space-3);
+  background: var(--sv-color-surface-sunken);
+  border-right: 1px solid var(--sv-color-border);
+}
+
+.sidebarLink {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  padding: var(--sv-space-2) var(--sv-space-3);
+  border-radius: var(--sv-radius-md);
+  font-size: var(--sv-font-size-sm);
+  font-weight: 500;
+  color: var(--sv-color-text-muted);
+  text-decoration: none;
+}
+
+.sidebarLink:hover {
+  background: var(--sv-color-surface-raised);
+  color: var(--sv-color-text-primary);
+}
+
+.sidebarLinkActive {
+  background: var(--sv-color-surface-raised);
+  color: var(--sv-color-text-primary);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+}
+
+/* --- Home: project sections ---------------------------------------------- */
+
+.projectSection {
+  margin-top: var(--sv-space-8);
+}
+
+.projectSection:first-of-type {
+  margin-top: var(--sv-space-4);
+}
+
+.projectHeader {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sv-space-3);
+  margin-bottom: var(--sv-space-4);
+}
+
+.projectHeaderSpacer {
+  flex: 1 1 auto;
+}
+
+.projectGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--sv-space-4);
+}
+
+.boardCardLink {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  border-radius: var(--sv-radius-lg);
+}
+
+.boardCardLink:focus-visible {
+  outline: 2px solid var(--sv-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.boardCardBody {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-3);
+  min-height: var(--sv-space-12);
+}
+
+.boardColorChip {
+  flex: 0 0 auto;
+  width: var(--sv-space-5);
+  height: var(--sv-space-5);
+  border-radius: var(--sv-radius-sm);
+}
+
+.newBoardCard {
+  min-height: calc(var(--sv-space-12) + 2 * var(--sv-space-4));
+  width: 100%;
+  border: 1px dashed var(--sv-color-border-strong);
+  border-radius: var(--sv-radius-lg);
+}
+
+/* --- Dialog internals ----------------------------------------------------- */
+
+.dialogBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-4);
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sv-space-2);
+  margin-top: var(--sv-space-2);
+}
+
+.swatchRow {
+  display: flex;
+  gap: var(--sv-space-2);
+  flex-wrap: wrap;
+}
+
+.swatch {
+  width: var(--sv-space-8);
+  height: var(--sv-space-8);
+  border-radius: var(--sv-radius-md);
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.swatchSelected {
+  border-color: var(--sv-color-accent);
+  outline: 2px solid var(--sv-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.formError {
+  color: var(--sv-color-error-text);
+  font-size: var(--sv-font-size-sm);
+  margin: 0;
+}
+
+/* --- Shared centering (loading / error boundaries) ------------------------ */
+
+.centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sv-space-4);
+  min-height: 40vh;
+}
+
+/* --- Board view (K.5) ------------------------------------------------------ */
+
+.boardHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-3);
+}
+
+.listsRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sv-space-4);
+  overflow-x: auto;
+  padding-bottom: var(--sv-space-4);
+}
+
+.list {
+  flex: 0 0 272px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+  background: var(--sv-color-surface-sunken);
+  border-radius: var(--sv-radius-lg);
+  padding: var(--sv-space-3);
+  max-height: calc(100vh - 220px);
+}
+
+.listHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  min-height: var(--sv-space-8);
+  cursor: grab;
+  touch-action: none;
+}
+
+.listDragPreview {
+  cursor: grabbing;
+  box-shadow: var(--sv-shadow-card);
+  min-height: unset;
+}
+
+.listName {
+  background: none;
+  border: none;
+  padding: var(--sv-space-1) var(--sv-space-2);
+  margin: calc(var(--sv-space-1) * -1) calc(var(--sv-space-2) * -1);
+  border-radius: var(--sv-radius-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.listName:hover {
+  background: var(--sv-color-surface-raised);
+}
+
+.listHeaderSpacer {
+  flex: 1 1 auto;
+}
+
+.listCards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.addListCard {
+  flex: 0 0 220px;
+  min-height: var(--sv-space-12);
+  align-self: flex-start;
+  border: 1px dashed var(--sv-color-border-strong);
+  border-radius: var(--sv-radius-lg);
+}
+
+.addListComposer,
+.addListComposerInline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+  background: var(--sv-color-surface-sunken);
+  border-radius: var(--sv-radius-lg);
+  padding: var(--sv-space-3);
+}
+
+.addListComposerInline {
+  flex: 0 0 240px;
+}
+
+.composerActions {
+  display: flex;
+  gap: var(--sv-space-2);
+}
+
+.addCardTrigger {
+  justify-content: flex-start;
+  color: var(--sv-color-text-muted);
+}
+
+.addCardComposer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+}
+
+.cardTile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+  background: var(--sv-color-surface);
+  border: 1px solid var(--sv-color-border);
+  border-radius: var(--sv-radius-md);
+  padding: var(--sv-space-3);
+  text-decoration: none;
+  color: inherit;
+  touch-action: none;
+}
+
+.cardTile:hover {
+  border-color: var(--sv-color-border-strong);
+}
+
+.cardTile:focus-visible {
+  outline: 2px solid var(--sv-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.cardDragPreview {
+  cursor: grabbing;
+  box-shadow: var(--sv-shadow-popover);
+  width: 240px;
+}
+
+.cardLabels {
+  display: flex;
+  gap: var(--sv-space-1);
+}
+
+.cardLabelChip {
+  width: var(--sv-space-6);
+  height: var(--sv-space-2);
+  border-radius: var(--sv-radius-sm);
+}
+
+.cardTitle {
+  color: var(--sv-color-text-primary);
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-3);
+  color: var(--sv-color-text-muted);
+  font-size: var(--sv-font-size-sm);
+}
+
+.cardMetaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sv-space-1);
+}
+
+.cardOverlayBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-5);
+}
+
+/* --- Card detail modal (K.6) ----------------------------------------------- */
+
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sv-space-2);
+}
+
+.cardTitleInput {
+  flex: 1 1 auto;
+  font-size: var(--sv-font-size-lg);
+  font-weight: 600;
+}
+
+.cardBreadcrumb {
+  flex: 0 0 100%;
+}
+
+.cardSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+}
+
+.cardSectionHeader {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sv-space-2);
+}
+
+.labelChipRow,
+.assigneeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  flex-wrap: wrap;
+}
+
+.labelChip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sv-space-1) var(--sv-space-3);
+  border-radius: var(--sv-radius-full);
+  font-size: var(--sv-font-size-sm);
+  font-weight: 500;
+  color: var(--sv-color-text-primary);
+}
+
+.chipAddButton {
+  border-radius: var(--sv-radius-full);
+  padding: 0;
+  width: var(--sv-space-6);
+  height: var(--sv-space-6);
+  border: 1px dashed var(--sv-color-border-strong);
+}
+
+.labelPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+  padding: var(--sv-space-2);
+}
+
+.labelPickerList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.labelPickerRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+}
+
+.labelPickerDivider {
+  border-top: 1px solid var(--sv-color-border);
+  margin: var(--sv-space-1) 0;
+}
+
+.dueDateRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+}
+
+.checklistProgress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sv-color-surface-sunken);
+  overflow: hidden;
+}
+
+.checklistProgressFill {
+  height: 100%;
+  background: var(--sv-color-accent);
+}
+
+.checklistItems {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checklistRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sv-space-2);
+}
+
+.checklistRowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-1);
+  flex: 0 0 auto;
+}
+
+.descriptionView {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--sv-color-surface-sunken);
+  border: 1px solid transparent;
+  border-radius: var(--sv-radius-md);
+  padding: var(--sv-space-3);
+  cursor: pointer;
+}
+
+.descriptionView:hover {
+  border-color: var(--sv-color-border);
+}
+
+.descriptionPlaceholder {
+  color: var(--sv-color-text-muted);
+}
+
+/* --- Comments & activity (K.8) --------------------------------------------- */
+
+.commentList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.commentRow {
+  display: flex;
+  gap: var(--sv-space-2);
+  align-items: flex-start;
+}
+
+.commentBody {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-1);
+  min-width: 0;
+}
+
+.commentMeta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sv-space-2);
+}
+
+.commentActions {
+  display: flex;
+  gap: var(--sv-space-2);
+}
+
+.commentReplies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-3);
+  margin: var(--sv-space-3) 0 0;
+  padding: 0 0 0 var(--sv-space-8);
+  list-style: none;
+}
+
+.commentComposer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+}
+
+.activityList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

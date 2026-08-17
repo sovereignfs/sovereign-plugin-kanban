@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="820" viewBox="0 0 720 820" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <rect width="720" height="820" fill="#e4e4e7" opacity="0.5"/>
+  <rect x="60" y="30" width="600" height="760" rx="12" fill="#ffffff" stroke="#d4d4d8"/>
+
+  <!-- Title row -->
+  <rect x="88" y="56" width="460" height="34" rx="6" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="100" y="78" font-size="17" font-weight="600" fill="#18181b">Write the data model</text>
+  <text x="596" y="80" font-size="16" fill="#71717a">•••</text>
+  <text x="628" y="78" font-size="16" fill="#71717a">✕</text>
+  <text x="88" y="106" font-size="12" fill="#71717a">in To Do</text>
+
+  <!-- Labels -->
+  <text x="88" y="142" font-size="12" font-weight="600" fill="#52525b">LABELS</text>
+  <rect x="88" y="150" width="52" height="22" rx="11" fill="#e0c4c4"/>
+  <rect x="148" y="150" width="52" height="22" rx="11" fill="#c9e0c4"/>
+  <circle cx="228" cy="161" r="11" fill="#f4f4f5" stroke="#d4d4d8"/>
+  <text x="223" y="166" font-size="13" fill="#52525b">+</text>
+
+  <!-- Due date -->
+  <text x="88" y="204" font-size="12" font-weight="600" fill="#52525b">DUE DATE</text>
+  <rect x="88" y="212" width="150" height="32" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="100" y="232" font-size="13" fill="#18181b">Aug 22, 2026</text>
+  <text x="248" y="232" font-size="12" fill="#71717a">Clear</text>
+
+  <!-- Assignees -->
+  <text x="88" y="272" font-size="12" font-weight="600" fill="#52525b">ASSIGNEES</text>
+  <circle cx="100" cy="292" r="14" fill="#d4d4d8"/>
+  <text x="93" y="296" font-size="11" fill="#18181b">DU</text>
+  <circle cx="130" cy="292" r="11" fill="#f4f4f5" stroke="#d4d4d8"/>
+  <text x="125" y="297" font-size="13" fill="#52525b">+</text>
+
+  <!-- Description -->
+  <text x="88" y="336" font-size="12" font-weight="600" fill="#52525b">DESCRIPTION</text>
+  <rect x="88" y="344" width="460" height="70" rx="8" fill="#fafafa" stroke="#e4e4e7"/>
+  <text x="100" y="366" font-size="13" fill="#18181b">Define the Drizzle schema for projects, boards,</text>
+  <text x="100" y="384" font-size="13" fill="#18181b">lists, and cards. See **RFC 0008** for reference.</text>
+
+  <!-- Checklist -->
+  <text x="88" y="446" font-size="12" font-weight="600" fill="#52525b">CHECKLIST</text>
+  <text x="180" y="446" font-size="12" fill="#71717a">2/3</text>
+  <rect x="88" y="453" width="460" height="6" rx="3" fill="#e4e4e7"/>
+  <rect x="88" y="453" width="307" height="6" rx="3" fill="#18181b"/>
+
+  <g>
+    <rect x="88" y="472" width="16" height="16" rx="4" fill="#18181b"/>
+    <text x="92" y="484" font-size="11" fill="#ffffff">✓</text>
+    <text x="114" y="484" font-size="13" fill="#a1a1aa" text-decoration="line-through">Design table schema</text>
+    <text x="480" y="484" font-size="13" fill="#a1a1aa">↑ ↓ ✕</text>
+  </g>
+  <g>
+    <rect x="88" y="502" width="16" height="16" rx="4" fill="#18181b"/>
+    <text x="92" y="514" font-size="11" fill="#ffffff">✓</text>
+    <text x="114" y="514" font-size="13" fill="#a1a1aa" text-decoration="line-through">Write migrations</text>
+    <text x="480" y="514" font-size="13" fill="#a1a1aa">↑ ↓ ✕</text>
+  </g>
+  <g>
+    <rect x="88" y="532" width="16" height="16" rx="4" fill="none" stroke="#d4d4d8"/>
+    <text x="114" y="544" font-size="13" fill="#18181b">Seed dev data</text>
+    <text x="480" y="544" font-size="13" fill="#a1a1aa">↑ ↓ ✕</text>
+  </g>
+  <rect x="88" y="562" width="460" height="34" rx="8" fill="none" stroke="#d4d4d8" stroke-dasharray="4 3"/>
+  <text x="100" y="583" font-size="13" fill="#a1a1aa">+ Add an item</text>
+
+  <!-- Comments/activity note -->
+  <line x1="88" y1="628" x2="548" y2="628" stroke="#e4e4e7"/>
+  <text x="88" y="654" font-size="12" font-weight="600" fill="#52525b">COMMENTS &amp; ACTIVITY</text>
+  <text x="88" y="676" font-size="12" fill="#a1a1aa">Coming in the next update.</text>
+
+  <text x="88" y="770" font-size="11" fill="#a1a1aa">Title is a quick-entry field (Enter/blur commits). Description is click-to-edit with explicit Save.</text>
+</svg>

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "io.openfs.kanban",
+  "name": "Kanban",
+  "version": "0.8.0",
+  "description": "A minimalist, sovereign alternative to Trello — projects, boards, lists, and cards.",
+  "type": "community",
+  "runtime": "native",
+  "routePrefix": "/kanban",
+  "shell": "default",
+  "shellConfig": {
+    "mobileFooter": false
+  },
+  "icon": "icon.svg",
+  "permissions": ["auth:session", "db:readWrite", "notifications:send"],
+  "repository": "https://github.com/kasunben/sovereign-plugin-kanban",
+  "compatibility": {
+    "minPlatformVersion": "0.94.0"
+  }
+}

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <rect width="1280" height="420" fill="#fafafa"/>
+  <text x="32" y="46" font-size="22" font-weight="700" fill="#18181b">Website relaunch</text>
+  <rect x="1044" y="22" width="92" height="34" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="1064" y="44" font-size="13" fill="#18181b">Settings</text>
+  <line x1="0" y1="66" x2="1280" y2="66" stroke="#e4e4e7"/>
+
+  <rect x="480" y="120" width="320" height="200" rx="12" fill="#ffffff" stroke="#e4e4e7"/>
+  <rect x="600" y="150" width="80" height="52" rx="8" fill="#f4f4f5"/>
+  <rect x="612" y="158" width="14" height="28" rx="3" fill="#d4d4d8"/>
+  <rect x="632" y="158" width="14" height="18" rx="3" fill="#d4d4d8"/>
+  <rect x="652" y="158" width="14" height="34" rx="3" fill="#d4d4d8"/>
+  <text x="640" y="238" font-size="15" font-weight="600" fill="#18181b" text-anchor="middle">Add your first list</text>
+  <text x="640" y="260" font-size="12" fill="#71717a" text-anchor="middle">Lists organize this board's cards —</text>
+  <text x="640" y="276" font-size="12" fill="#71717a" text-anchor="middle">try "To Do", "In Progress", "Done".</text>
+  <rect x="580" y="290" width="120" height="30" rx="8" fill="#18181b"/>
+  <text x="602" y="310" font-size="13" fill="#ffffff">Add list</text>
+</svg>

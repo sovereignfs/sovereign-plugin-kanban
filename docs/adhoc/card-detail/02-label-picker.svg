@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="420" viewBox="0 0 420 420" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <rect width="420" height="420" fill="#fafafa"/>
+  <rect x="20" y="20" width="280" height="380" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="36" y="48" font-size="13" font-weight="600" fill="#18181b">Labels</text>
+
+  <g>
+    <rect x="36" y="64" width="16" height="16" rx="4" fill="#18181b"/>
+    <text x="40" y="76" font-size="11" fill="#ffffff">✓</text>
+    <rect x="60" y="62" width="60" height="20" rx="10" fill="#e0c4c4"/>
+    <text x="132" y="76" font-size="12" fill="#71717a">✕</text>
+  </g>
+  <g>
+    <rect x="36" y="96" width="16" height="16" rx="4" fill="#18181b"/>
+    <text x="40" y="108" font-size="11" fill="#ffffff">✓</text>
+    <rect x="60" y="94" width="60" height="20" rx="10" fill="#c9e0c4"/>
+    <text x="132" y="108" font-size="12" fill="#71717a">✕</text>
+  </g>
+  <g>
+    <rect x="36" y="128" width="16" height="16" rx="4" fill="none" stroke="#d4d4d8"/>
+    <rect x="60" y="126" width="60" height="20" rx="10" fill="#e8d3b5"/>
+    <text x="132" y="140" font-size="12" fill="#71717a">✕</text>
+  </g>
+
+  <line x1="36" y1="168" x2="264" y2="168" stroke="#e4e4e7"/>
+  <text x="36" y="192" font-size="12" font-weight="600" fill="#52525b">New label</text>
+  <rect x="36" y="200" width="228" height="30" rx="6" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="46" y="220" font-size="12" fill="#a1a1aa">Label name</text>
+  <rect x="36" y="238" width="24" height="24" rx="6" fill="#b5c9e8" stroke="#18181b" stroke-width="2"/>
+  <rect x="66" y="238" width="24" height="24" rx="6" fill="#c9e0c4"/>
+  <rect x="96" y="238" width="24" height="24" rx="6" fill="#e8d3b5"/>
+  <rect x="126" y="238" width="24" height="24" rx="6" fill="#e0c4c4"/>
+  <rect x="156" y="238" width="24" height="24" rx="6" fill="#d8c4e0"/>
+  <rect x="36" y="274" width="90" height="30" rx="8" fill="#18181b"/>
+  <text x="52" y="294" font-size="12" fill="#ffffff">Create label</text>
+
+  <text x="36" y="340" font-size="11" fill="#a1a1aa">Checkbox toggles the label on this card immediately (no</text>
+  <text x="36" y="356" font-size="11" fill="#a1a1aa">Save button — same as checklist toggles). ✕ deletes the</text>
+  <text x="36" y="372" font-size="11" fill="#a1a1aa">label from the board entirely, behind a confirm.</text>
+</svg>

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <rect width="900" height="420" fill="#fafafa"/>
+
+  <!-- List with menu open -->
+  <rect x="24" y="24" width="264" height="380" rx="10" fill="#f4f4f5"/>
+  <text x="40" y="48" font-size="14" font-weight="600" fill="#18181b">To Do</text>
+  <text x="90" y="48" font-size="12" fill="#71717a">3</text>
+  <text x="268" y="48" font-size="16" fill="#18181b">•••</text>
+  <rect x="150" y="56" width="150" height="128" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="166" y="84" font-size="13" fill="#18181b">Add card</text>
+  <text x="166" y="112" font-size="13" fill="#18181b">Rename list</text>
+  <line x1="160" y1="122" x2="284" y2="122" stroke="#e4e4e7"/>
+  <text x="166" y="150" font-size="13" fill="#b91c1c">Delete list</text>
+
+  <!-- Rename inline state -->
+  <rect x="336" y="24" width="264" height="130" rx="10" fill="#f4f4f5"/>
+  <rect x="352" y="40" width="232" height="30" rx="6" fill="#ffffff" stroke="#18181b" stroke-width="2"/>
+  <text x="360" y="60" font-size="13" fill="#18181b">In Progress|</text>
+  <text x="352" y="96" font-size="11" fill="#a1a1aa">Inline rename — commits on Enter or blur</text>
+  <text x="352" y="112" font-size="11" fill="#a1a1aa">(useCommitOnEnterOrBlur), Escape cancels.</text>
+
+  <!-- Quick add card focused state -->
+  <rect x="648" y="24" width="264" height="130" rx="10" fill="#f4f4f5"/>
+  <rect x="664" y="40" width="232" height="56" rx="8" fill="#ffffff" stroke="#18181b" stroke-width="2"/>
+  <text x="676" y="62" font-size="13" fill="#18181b">Fix header spacing on|</text>
+  <rect x="664" y="102" width="64" height="28" rx="7" fill="#18181b"/>
+  <text x="678" y="121" font-size="12" fill="#ffffff">Add</text>
+  <text x="736" y="121" font-size="12" fill="#71717a">Enter to add, Esc to cancel</text>
+
+  <text x="24" y="440" font-size="12" fill="#a1a1aa" transform="translate(0,-30)">"Add card" in the menu focuses this list's quick-add composer at the bottom.</text>
+</svg>

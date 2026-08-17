@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="440" viewBox="0 0 640 440" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <rect width="640" height="440" fill="#e4e4e7" opacity="0.6"/>
+  <rect x="120" y="60" width="400" height="300" rx="12" fill="#ffffff" stroke="#d4d4d8"/>
+
+  <text x="148" y="102" font-size="18" font-weight="700" fill="#18181b">Write the data model</text>
+  <text x="496" y="100" font-size="16" fill="#71717a">✕</text>
+  <text x="148" y="128" font-size="12" fill="#71717a">in To Do</text>
+
+  <rect x="148" y="150" width="100" height="52" rx="8" fill="#f4f4f5"/>
+  <rect x="164" y="164" width="14" height="24" rx="3" fill="#d4d4d8"/>
+  <rect x="184" y="164" width="14" height="16" rx="3" fill="#d4d4d8"/>
+  <rect x="204" y="164" width="14" height="24" rx="3" fill="#d4d4d8"/>
+
+  <text x="148" y="234" font-size="13" font-weight="600" fill="#18181b">Full card details are coming in the next update</text>
+  <text x="148" y="256" font-size="12" fill="#71717a">Description, labels, due date, checklist, comments,</text>
+  <text x="148" y="272" font-size="12" fill="#71717a">and activity will open here.</text>
+
+  <rect x="404" y="308" width="116" height="32" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="424" y="329" font-size="13" fill="#18181b">Close</text>
+
+  <text x="148" y="404" font-size="11" fill="#a1a1aa">URL: /kanban/boards/&lt;id&gt;?card=&lt;cardId&gt; — same overlay contract K.6 fills in.</text>
+</svg>

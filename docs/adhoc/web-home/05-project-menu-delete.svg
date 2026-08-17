@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="420" viewBox="0 0 1000 420" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <rect width="1000" height="420" fill="#fafafa"/>
+
+  <!-- Left: project menu open -->
+  <text x="40" y="46" font-size="17" font-weight="600" fill="#18181b">Marketing</text>
+  <text x="148" y="46" font-size="13" fill="#71717a">3 boards</text>
+  <text x="420" y="46" font-size="16" fill="#18181b">•••</text>
+  <rect x="300" y="58" width="180" height="118" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="318" y="90" font-size="14" fill="#18181b">Rename project</text>
+  <text x="318" y="122" font-size="14" fill="#18181b">Edit description</text>
+  <line x1="312" y1="138" x2="468" y2="138" stroke="#e4e4e7"/>
+  <text x="318" y="164" font-size="14" fill="#b91c1c">Delete project</text>
+
+  <!-- Right: delete confirm -->
+  <rect x="560" y="58" width="400" height="230" rx="12" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="588" y="100" font-size="17" font-weight="700" fill="#18181b">Delete "Marketing"?</text>
+  <text x="588" y="132" font-size="13" fill="#52525b">This deletes the project and its 3 boards,</text>
+  <text x="588" y="150" font-size="13" fill="#52525b">including every list, card, and comment on them.</text>
+  <text x="588" y="176" font-size="13" font-weight="600" fill="#b91c1c">This can't be undone.</text>
+  <rect x="700" y="220" width="80" height="34" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="720" y="242" font-size="13" fill="#18181b">Cancel</text>
+  <rect x="788" y="220" width="140" height="34" rx="8" fill="#b91c1c"/>
+  <text x="806" y="242" font-size="13" fill="#ffffff">Delete project</text>
+
+  <text x="40" y="380" font-size="12" fill="#a1a1aa">Menu is the DS Menu component; confirm is the DS ConfirmDialog with destructive styling.</text>
+  <text x="40" y="400" font-size="12" fill="#a1a1aa">Rename / Edit description reuse the New project dialog pre-filled. Board deletion (same pattern) lives on the board screen (K.5).</text>
+</svg>
