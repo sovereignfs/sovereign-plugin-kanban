@@ -740,3 +740,33 @@
 .inboxItemMeta {
   color: var(--sv-color-text-muted);
 }
+
+/* --- Mobile footer (K.12) --------------------------------------------------- */
+
+.mobileFooterFixed {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 101;
+}
+
+.mobileFooterIconWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.mobileFooterUnseenBadge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--sv-radius-full);
+  background: var(--sv-color-accent);
+}
+
+.mobileFooterAppIcon {
+  width: 28px;
+  height: 28px;
+}

@@ -7,7 +7,99 @@
 
 ## Status
 
-🚧 In progress — K.1–K.11 complete. K.11: Inbox (web) & notification wiring
+🚧 In progress — K.1–K.12 complete. K.12: Mobile navigation & Home shipped —
+the start of the mobile phase. `KanbanMobileFooter.tsx` (client) renders
+`@sovereignfs/ui`'s `MobileFooter` (Boards left / Inbox right, each with a
+`router.push` `onClick` rather than `FooterIcon`'s `href`, preserving
+client-side navigation — same reasoning as the platform's own `MobileNav`)
+plus `MobileAppsDrawer` for the center "Apps" launcher. Per SPEC's explicit
+"untouched Launcher" wording, the drawer shows the *real* installed-plugins
+list, not a kanban-scoped substitute: `shellConfig.mobileFooter: false`
+(already set from scaffolding) removes the platform's own `MobileNav` —
+including its Drawer — entirely on this plugin's routes, so there's no
+shared platform drawer instance left to hook into. `sdk.plugins.list()`
+(RFC 0051) is the documented, permission-free way to reconstruct it instead:
+fetched server-side in `layout.tsx` alongside the existing
+`hasUnseenInboxActivity()` call, filtered to `availableToUser`, and passed
+down as plain serializable `MobileAppEntry[]` data — never JSX — across the
+client boundary, with icon URLs built via the same `/plugin-icons/<id>.svg`
+convention `runtime/app/(platform)/layout.tsx` uses. The Inbox icon carries
+the same unseen-dot badge the desktop sidebar shows (K.11's
+`hasUnseenInbox`, already computed once per navigation in `layout.tsx`).
+Home's "adapted to one column" deliverable needed zero code changes — K.4's
+original `.projectGrid { grid-template-columns: repeat(auto-fill,
+minmax(200px, 1fr)) }` already collapses to a single column at mobile
+widths, confirmed live rather than assumed.
+
+**Two real bugs found live, not by any check that renders in isolation:**
+(1) `layout.tsx` (an `async` Server Component) initially rendered
+`<ResponsiveSurface web={null} mobile={<KanbanMobileFooter .../>} />`
+directly — crashed every page load at mobile width with "Attempted to call
+useResponsiveLayout() from the server but useResponsiveLayout is on the
+client." `ResponsiveSurface.tsx` has no `'use client'` of its own by design
+(confirmed by reading its source); every real consumer elsewhere in the
+monorepo (`example-mobile/app/_components/MobileShowcase.tsx`) only ever
+renders it from *inside* an already-`'use client'` component, never
+straight from a Server Component's JSX. Fixed by dropping `ResponsiveSurface`
+from `layout.tsx` entirely and calling `useIsMobile()` directly inside the
+already-client `KanbanMobileFooter`, with an early `if (!isMobile) return
+null` placed after every other hook so hook-call order never changes across
+renders. (2) After fixing (1), the footer visibly squeezed `.main` to a
+143px-wide column at a 390px viewport — confirmed via `getBoundingClientRect()`
+measurement, not trusted from the screenshot alone, since this session's
+earlier tasks repeatedly showed screenshots can carry capture/scaling
+artifacts. Root cause: `MobileFooter.module.css`'s `.footer` is
+`position: relative` by design (the platform's own `MobileNav` instead uses
+`grid-row: 3` in a CSS Grid shell to take it out of flow), so as a third
+child of kanban's plain `display: flex` `.shell` it competed with the
+sidebar and `.main` for horizontal space instead of overlaying the viewport
+bottom. Fixed with a new `.mobileFooterFixed` wrapper
+(`position: fixed; bottom: 0; left: 0; right: 0`) around
+`KanbanMobileFooter`'s return, taking it out of `.shell`'s flex flow;
+re-verified via measurement that `.main` returned to full width with zero
+scroll overflow, and that `--sv-shell-footer-height` still self-published
+correctly (`"61px"`) from inside the fixed wrapper onto `#sv-app-shell`.
+
+Verified live at a 390×844 mobile viewport (matching iPhone dimensions),
+using precise DOM measurement rather than screenshots alone for the
+layout-correctness claims: `.main` full-width with no overflow; footer
+correctly pinned to the viewport bottom with content clearing it via the
+platform's own `--sv-shell-footer-height` consumption
+(`shell.module.css`'s `.content` padding-bottom); the Board settings
+`Dialog` renders as a full-screen sheet with all content clear of the
+footer; the Apps drawer shows the real installed-plugins list (including
+Kanban and Launcher); navigating Kanban → Launcher → back to Kanban shows
+exactly one footer element at every step (no double-footer); Home renders
+correctly in one column; the Boards footer icon shows the correct active
+state on `/kanban`. **Not verified: the review checklist's explicit
+"verified on iOS simulator, not just narrow-viewport browser" item.**
+Attached to a booted iPhone 17 Simulator and navigated to `/kanban`, which
+redirected to `/login` fully blocked by this codebase's own documented
+offline gate ("You're offline. Connect to the internet to sign in.") with
+no form fields reachable. Investigated rather than assumed broken: pressing
+HOME showed the native Maps app rendering real live map tiles, proving the
+simulator has genuine working connectivity at the OS level; the login
+page's own HTML/CSS/JS visibly loaded successfully first (the full "Sign in
+to Sovereign" card rendered) before the client-side offline check ran,
+meaning the actual HTTP fetch to `localhost` succeeded — so the gate's
+`navigator.onLine`-based signal is a false positive, not a real network
+failure. Tried reloading (no change) and a full force-quit + relaunch of
+Safari via the app switcher (no change, same result on the very first
+load) — ruling out simple cache/process-state staleness. This matches a
+known WebKit-in-Simulator quirk where `navigator.onLine` initializes
+`false` and only updates on a genuine interface transition event, which
+never fires if the interface was already up at process start; this
+particular simulator's Settings app exposes no Wi-Fi/Airplane Mode toggle
+to force one (Simulator networking proxies the host Mac directly). Concluded
+as a documented environmental limitation of this session's tooling, not a
+defect in K.12's code — which was already verified thoroughly via precise
+DOM measurement at the same viewport dimensions — rather than attempting a
+full simulator erase, which would risk discarding unrelated state (an
+already-authenticated session for a different plugin was already present on
+this same simulator on first attach). Matches K.9's precedent for a
+documented good-faith-effort limitation.
+
+K.11: Inbox (web) & notification wiring
 shipped. New `kanban_inbox_state` table (one row per user — `user_id` PK,
 `last_seen_at` nullable) is the entire read/unread model, matching SPEC's
 "lightweight — no per-row read state" instruction exactly; migrations
