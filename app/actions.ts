@@ -969,12 +969,14 @@ export async function addComment(input: {
   if (!access) return fail(NOT_FOUND_CARD);
 
   let parentId: string | null = null;
+  let parentAuthorId: string | null = null;
   if (input.parentId) {
     const parentRows = await db
       .select({
         id: schema.comments.id,
         cardId: schema.comments.cardId,
         parentId: schema.comments.parentId,
+        authorId: schema.comments.authorId,
       })
       .from(schema.comments)
       .where(eq(schema.comments.id, input.parentId));
@@ -982,6 +984,7 @@ export async function addComment(input: {
     if (!parent || parent.cardId !== input.cardId) return fail(NOT_FOUND_COMMENT);
     if (parent.parentId !== null) return fail('Replies can’t be nested further.');
     parentId = parent.id;
+    parentAuthorId = parent.authorId;
   }
 
   const now = Date.now();
@@ -1006,6 +1009,47 @@ export async function addComment(input: {
       payload: { commentId, parentId },
     });
   });
+
+  // K.11: notify the parent comment's author (reply-to-your-comment) and
+  // every assignee of the card (comment-on-your-card) — never the commenter
+  // themselves, and never the same person twice if they're both. A reply's
+  // recipient set is a superset of a top-level comment's, not a separate
+  // code path, since a reply *is* a comment.
+  const recipients = new Map<string, 'reply' | 'comment'>();
+  if (parentAuthorId && parentAuthorId !== actor.userId) {
+    recipients.set(parentAuthorId, 'reply');
+  }
+  const assigneeRows = await db
+    .select({ userId: schema.cardAssignees.userId })
+    .from(schema.cardAssignees)
+    .where(eq(schema.cardAssignees.cardId, input.cardId));
+  for (const a of assigneeRows) {
+    if (a.userId !== actor.userId && !recipients.has(a.userId)) recipients.set(a.userId, 'comment');
+  }
+  if (recipients.size > 0) {
+    const cardRows = await db
+      .select({ title: schema.cards.title })
+      .from(schema.cards)
+      .where(eq(schema.cards.id, input.cardId));
+    const cardTitle = cardRows[0]?.title ?? 'a card';
+    const requestHeaders = await headers();
+    for (const [userId, reason] of recipients) {
+      await sdk.notifications.send(
+        {
+          recipientUserId: userId,
+          title: reason === 'reply' ? 'New reply to your comment' : 'New comment on your card',
+          body:
+            reason === 'reply'
+              ? `Someone replied to your comment on "${cardTitle}".`
+              : `Someone commented on "${cardTitle}".`,
+          url: `/kanban/boards/${access.boardId}?card=${input.cardId}`,
+          category: 'info',
+        },
+        requestHeaders,
+      );
+    }
+  }
+
   refresh();
   return ok(parentId ? 'Reply added.' : 'Comment added.');
 }
@@ -1028,6 +1072,28 @@ export async function getMoreCardActivity(input: {
   if (!access) return { ok: false, error: NOT_FOUND_CARD };
   const page = await getActivityPage(db, input.cardId, input.cursor);
   return { ok: true, ...page };
+}
+
+// ---------------------------------------------------------------------------
+// Inbox (K.11)
+
+/**
+ * Records the Inbox as seen "now" — clears the sidebar's unseen indicator.
+ * Called from a client-side `useEffect` on the Inbox page mounting for
+ * real, never during the page's own server render: Next.js's `<Link>`
+ * prefetching would otherwise run that render (and this write) just from
+ * the user hovering the sidebar entry, clearing "unseen" for activity
+ * they never actually looked at.
+ */
+export async function markInboxSeen(): Promise<void> {
+  const actor = await requireUser();
+  const db = await getDb();
+  const now = Date.now();
+  await db
+    .insert(schema.inboxState)
+    .values({ userId: actor.userId, tenantId: actor.tenantId, lastSeenAt: now })
+    .onConflictDoUpdate({ target: schema.inboxState.userId, set: { lastSeenAt: now } });
+  refresh();
 }
 
 // ---------------------------------------------------------------------------

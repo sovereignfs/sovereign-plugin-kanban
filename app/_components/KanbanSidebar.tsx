@@ -5,13 +5,13 @@ import { usePathname } from 'next/navigation';
 import { Icon } from '@sovereignfs/ui';
 import styles from '../kanban.module.css';
 
-/**
- * Plugin-local secondary nav (same precedent as Console's section nav).
- * Inbox joins this list when it ships (K.11) — no dead entries before then.
- */
-const NAV = [{ href: '/kanban', label: 'Boards', icon: 'grid-2x2' as const }];
+/** Plugin-local secondary nav (same precedent as Console's section nav). */
+const NAV = [
+  { href: '/kanban', label: 'Boards', icon: 'grid-2x2' as const },
+  { href: '/kanban/inbox', label: 'Inbox', icon: 'bell' as const },
+];
 
-export function KanbanSidebar() {
+export function KanbanSidebar({ hasUnseenInbox }: { hasUnseenInbox: boolean }) {
   const pathname = usePathname();
   return (
     <nav className={styles.sidebar} aria-label="Kanban sections">
@@ -20,6 +20,7 @@ export function KanbanSidebar() {
           item.href === '/kanban'
             ? pathname === '/kanban' || pathname.startsWith('/kanban/boards')
             : pathname.startsWith(item.href);
+        const showUnseenBadge = item.href === '/kanban/inbox' && hasUnseenInbox;
         return (
           <Link
             key={item.href}
@@ -31,6 +32,7 @@ export function KanbanSidebar() {
           >
             <Icon name={item.icon} size="sm" aria-hidden={true} />
             {item.label}
+            {showUnseenBadge && <span className={styles.sidebarUnseenBadge} aria-label="Unseen activity" />}
           </Link>
         );
       })}

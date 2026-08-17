@@ -871,3 +871,144 @@ describe('board members & share (K.9)', () => {
     );
   });
 });
+
+describe('comment notifications (K.11)', () => {
+  const commenter = { id: 'user-commenter', tenantId: 'default' };
+
+  async function setupCardWithAssignee(): Promise<{ boardId: string; cardId: string }> {
+    const { boardId, listId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: commenter.id, email: 'commenter@example.com', name: 'Commenter' });
+    expect((await actions.addBoardMember({ boardId, userId: commenter.id })).ok).toBe(true);
+    expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    expect((await actions.assignMember({ cardId: card.id, userId: owner.id })).ok).toBe(true);
+    harness.sentNotifications = []; // clear the assignment notification (self-assign, none expected, but be explicit)
+    return { boardId, cardId: card.id };
+  }
+
+  it('notifies every assignee on a top-level comment, never the commenter', async () => {
+    const { cardId } = await setupCardWithAssignee();
+    actAs(owner); // owner is the sole assignee and about to comment on their own card
+    expect((await actions.addComment({ cardId, body: 'Top level' })).ok).toBe(true);
+    expect(harness.sentNotifications).toHaveLength(0); // owner is both commenter and only assignee
+
+    actAs(commenter); // not an assignee, just a board member
+    expect((await actions.addComment({ cardId, body: 'Another comment' })).ok).toBe(true);
+    expect(harness.sentNotifications).toHaveLength(1);
+    const notification = must(harness.sentNotifications[0], 'notification');
+    expect(notification.recipientUserId).toBe(owner.id);
+    expect(notification.title).toBe('New comment on your card');
+  });
+
+  it('notifies the parent comment author on a reply, not the replier', async () => {
+    const { cardId } = await setupCardWithAssignee();
+    actAs(owner);
+    expect((await actions.unassignMember({ cardId, userId: owner.id })).ok).toBe(true); // isolate reply-only behaviour
+    expect((await actions.addComment({ cardId, body: 'Top level' })).ok).toBe(true);
+    const top = must((await t.db.select().from(schema.comments))[0], 'top-level comment');
+    harness.sentNotifications = [];
+
+    actAs(commenter);
+    expect(
+      (await actions.addComment({ cardId, body: 'A reply', parentId: top.id })).ok,
+    ).toBe(true);
+    expect(harness.sentNotifications).toHaveLength(1);
+    const notification = must(harness.sentNotifications[0], 'notification');
+    expect(notification.recipientUserId).toBe(owner.id);
+    expect(notification.title).toBe('New reply to your comment');
+  });
+
+  it('sends one notification, not two, when the parent author is also an assignee', async () => {
+    const { cardId } = await setupCardWithAssignee();
+    actAs(owner);
+    expect((await actions.addComment({ cardId, body: 'Top level' })).ok).toBe(true);
+    const top = must((await t.db.select().from(schema.comments))[0], 'top-level comment');
+    harness.sentNotifications = [];
+
+    actAs(commenter);
+    expect(
+      (await actions.addComment({ cardId, body: 'A reply', parentId: top.id })).ok,
+    ).toBe(true);
+    // owner is both the parent comment's author and the card's sole assignee —
+    // must be notified exactly once, as a "reply", not twice.
+    expect(harness.sentNotifications).toHaveLength(1);
+    expect(must(harness.sentNotifications[0], 'notification').title).toBe('New reply to your comment');
+  });
+});
+
+describe('inbox (K.11)', () => {
+  it('markInboxSeen creates then updates the caller’s own row', async () => {
+    await setup();
+    actAs(owner);
+    await actions.markInboxSeen();
+    const rows = await t.db.select().from(schema.inboxState);
+    expect(rows).toHaveLength(1);
+    const firstSeenAt = must(rows[0], 'inbox state row').lastSeenAt;
+    expect(firstSeenAt).not.toBeNull();
+
+    await actions.markInboxSeen();
+    const after = await t.db.select().from(schema.inboxState);
+    expect(after).toHaveLength(1); // updated in place, not a second row
+    expect(must(after[0], 'updated row').userId).toBe(owner.id);
+  });
+
+  it('getInboxFeed only returns activity from boards the actor is a member of', async () => {
+    const { boardId, listId } = await setup();
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'Owner board card' })).ok).toBe(true);
+
+    actAs(outsider);
+    expect((await actions.createProject({ name: 'Outsider project' })).ok).toBe(true);
+    const outsiderProject = must(
+      (await t.db.select().from(schema.projects)).find((p) => p.name === 'Outsider project'),
+      'outsider project',
+    );
+    expect(
+      (await actions.createBoard({ projectId: outsiderProject.id, name: 'Outsider board', color: 'red' }))
+        .ok,
+    ).toBe(true);
+    const outsiderBoard = must(
+      (await t.db.select().from(schema.boards)).find((b) => b.name === 'Outsider board'),
+      'outsider board',
+    );
+    expect(
+      (await actions.createList({ boardId: outsiderBoard.id, name: 'Outsider list' })).ok,
+    ).toBe(true);
+    const outsiderList = must(
+      (await t.db.select().from(schema.lists)).find((l) => l.name === 'Outsider list'),
+      'outsider list',
+    );
+    expect((await actions.createCard({ listId: outsiderList.id, title: 'Outsider card' })).ok).toBe(true);
+
+    const { getInboxFeed } = await import('../_lib/queries');
+    const ownerFeed = await getInboxFeed(t.db, { userId: owner.id, tenantId: owner.tenantId });
+    expect(ownerFeed.items.every((i) => i.boardId === boardId)).toBe(true);
+    expect(ownerFeed.items.some((i) => i.boardId === outsiderBoard.id)).toBe(false);
+
+    const outsiderFeed = await getInboxFeed(t.db, { userId: outsider.id, tenantId: outsider.tenantId });
+    expect(outsiderFeed.items.every((i) => i.boardId === outsiderBoard.id)).toBe(true);
+    expect(outsiderFeed.items.some((i) => i.boardId === boardId)).toBe(false);
+  });
+
+  it('hasUnseenInboxActivity ignores the actor’s own activity but reacts to others’, and clears after markInboxSeen', async () => {
+    const { boardId } = await setup();
+    const { hasUnseenInboxActivity } = await import('../_lib/queries');
+    const ownerActor = { userId: owner.id, tenantId: owner.tenantId };
+
+    actAs(owner);
+    expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false); // only own board.created so far
+
+    registerDirectoryUser({ id: 'user-other-member', email: 'other@example.com', name: 'Other' });
+    expect((await actions.addBoardMember({ boardId, userId: 'user-other-member' })).ok).toBe(true);
+    expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false); // still only owner's own actions
+
+    actAs({ id: 'user-other-member', tenantId: 'default' });
+    expect((await actions.createList({ boardId, name: 'A new list' })).ok).toBe(true);
+    expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(true); // someone else acted
+
+    actAs(owner); // markInboxSeen marks whichever user is currently "acting"
+    await actions.markInboxSeen();
+    expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false);
+  });
+});

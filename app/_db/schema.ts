@@ -229,3 +229,17 @@ export const activity = sqliteTable(
     index('kanban_activity_card_idx').on(t.cardId),
   ],
 );
+
+/**
+ * K.11 Inbox read/unread — one row per user, updated on every Inbox visit.
+ * Deliberately global, not per-board: the Inbox aggregates activity across
+ * every board the user belongs to, so "seen" is a single timestamp, not a
+ * per-board or per-activity-row read state (SPEC: "lightweight — a
+ * last_seen_at per user is enough; no per-row read state in Phase 1").
+ */
+export const inboxState = sqliteTable('kanban_inbox_state', {
+  userId: text('user_id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  /** Null until the user's first Inbox visit. */
+  lastSeenAt: integer('last_seen_at'),
+});

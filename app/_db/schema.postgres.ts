@@ -216,3 +216,9 @@ export const activity = pgTable(
     index('kanban_activity_card_idx').on(t.cardId),
   ],
 );
+
+export const inboxState = pgTable('kanban_inbox_state', {
+  userId: text('user_id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  lastSeenAt: integer('last_seen_at'),
+});

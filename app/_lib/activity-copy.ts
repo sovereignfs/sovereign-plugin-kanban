@@ -10,14 +10,22 @@
  * completeness and for K.11's board/Inbox activity feed, which reuses this
  * function. The `default` case keeps this function forward-compatible with
  * activity types added by later tasks without requiring an edit here first.
+ *
+ * `ActivityCopyContext.lists`/`labels` are deliberately the minimal shape
+ * this file actually reads (`id`/`name`[/`color`]), not the full
+ * `BoardData['lists']`/`['labels']` — K.11's Inbox feed spans multiple
+ * boards and only fetches that minimal shape (unioned across boards, see
+ * `queries.ts`'s `getInboxFeed`), so requiring the fuller per-board type
+ * here would make this function unusable there. A single-board `BoardData`
+ * value still satisfies this structurally (extra fields are fine).
  */
-import type { BoardData, CardDetail } from './queries';
+import type { CardDetail } from './queries';
 
 type ActivityItem = CardDetail['activity'][number];
 
 export interface ActivityCopyContext {
-  lists: BoardData['lists'];
-  labels: BoardData['labels'];
+  lists: Array<{ id: string; name: string }>;
+  labels: Array<{ id: string; name: string; color: string }>;
   resolveName: (userId: string) => string;
 }
 

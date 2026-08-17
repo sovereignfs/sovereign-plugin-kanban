@@ -47,6 +47,7 @@ describe('kanban schema (real migrations, in-memory sqlite)', () => {
       'kanban_cards',
       'kanban_checklist_items',
       'kanban_comments',
+      'kanban_inbox_state',
       'kanban_labels',
       'kanban_lists',
       'kanban_projects',

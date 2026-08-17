@@ -4,7 +4,7 @@
  * the acting user's memberships, so a page can never render a board the
  * viewer doesn't belong to.
  */
-import { and, asc, desc, eq, inArray, lt, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, ne, or } from 'drizzle-orm';
 import { sdk } from '@sovereignfs/sdk';
 import type { KanbanDb } from '../_db/client';
 import * as schema from '../_db/schema';
@@ -451,4 +451,152 @@ export async function getActivityPage(
     payload: a.payload === null ? null : (JSON.parse(a.payload) as unknown),
   }));
   return { items, nextCursor: activityCursorFor(items) };
+}
+
+// ---------------------------------------------------------------------------
+// Inbox (K.11)
+
+export const INBOX_PAGE_SIZE = 100;
+
+export interface InboxItem {
+  id: string;
+  boardId: string;
+  boardName: string;
+  cardId: string | null;
+  cardTitle: string | null;
+  actorId: string;
+  type: string;
+  payload: unknown;
+  createdAt: number;
+}
+
+export interface InboxFeed {
+  items: InboxItem[];
+  lists: Array<{ id: string; name: string }>;
+  labels: Array<{ id: string; name: string; color: string }>;
+  members: MemberIdentity[];
+}
+
+async function memberBoardIds(db: KanbanDb, actor: Actor): Promise<string[]> {
+  const rows = await db
+    .select({ boardId: schema.boardMembers.boardId })
+    .from(schema.boardMembers)
+    .where(
+      and(eq(schema.boardMembers.userId, actor.userId), eq(schema.boardMembers.tenantId, actor.tenantId)),
+    );
+  return rows.map((r) => r.boardId);
+}
+
+/**
+ * Activity across every board `actor` belongs to, newest first, capped at
+ * `INBOX_PAGE_SIZE` with no further pagination — a deliberate Phase 1 scope
+ * decision (SPEC's K.11 review checklist doesn't call for "load more"; this
+ * is a feed to skim, not an archive to page through). `lists`/`labels`/
+ * `members` are unioned across all those boards so the card-scoped
+ * `describeActivity()`/`displayName()` (K.8/K.9) can resolve every row
+ * without per-board context switching — ids are globally unique nanoids, so
+ * a flat union never collides across boards.
+ */
+export async function getInboxFeed(db: KanbanDb, actor: Actor): Promise<InboxFeed> {
+  const boardIds = await memberBoardIds(db, actor);
+  if (boardIds.length === 0) return { items: [], lists: [], labels: [], members: [] };
+
+  const [activityRows, boardRows, listRows, labelRows, memberRows] = await Promise.all([
+    db
+      .select({
+        id: schema.activity.id,
+        boardId: schema.activity.boardId,
+        cardId: schema.activity.cardId,
+        actorId: schema.activity.actorId,
+        type: schema.activity.type,
+        payload: schema.activity.payload,
+        createdAt: schema.activity.createdAt,
+      })
+      .from(schema.activity)
+      .where(inArray(schema.activity.boardId, boardIds))
+      .orderBy(desc(schema.activity.createdAt), desc(schema.activity.id))
+      .limit(INBOX_PAGE_SIZE),
+    db
+      .select({ id: schema.boards.id, name: schema.boards.name })
+      .from(schema.boards)
+      .where(inArray(schema.boards.id, boardIds)),
+    db
+      .select({ id: schema.lists.id, name: schema.lists.name })
+      .from(schema.lists)
+      .where(inArray(schema.lists.boardId, boardIds)),
+    db
+      .select({ id: schema.labels.id, name: schema.labels.name, color: schema.labels.color })
+      .from(schema.labels)
+      .where(inArray(schema.labels.boardId, boardIds)),
+    db
+      .select({ userId: schema.boardMembers.userId })
+      .from(schema.boardMembers)
+      .where(inArray(schema.boardMembers.boardId, boardIds)),
+  ]);
+
+  const cardIds = [
+    ...new Set(activityRows.map((a) => a.cardId).filter((id): id is string => id !== null)),
+  ];
+  const cardRows =
+    cardIds.length === 0
+      ? []
+      : await db
+          .select({ id: schema.cards.id, title: schema.cards.title })
+          .from(schema.cards)
+          .where(inArray(schema.cards.id, cardIds));
+  const cardTitleById = new Map(cardRows.map((c) => [c.id, c.title]));
+  const boardNameById = new Map(boardRows.map((b) => [b.id, b.name]));
+
+  const uniqueMemberIds = [...new Set(memberRows.map((m) => m.userId))];
+  const directoryUsers =
+    uniqueMemberIds.length === 0 ? [] : await sdk.directory.resolveUsers({ ids: uniqueMemberIds });
+  const directoryById = new Map(directoryUsers.map((u) => [u.id, u]));
+  const members: MemberIdentity[] = uniqueMemberIds.map((userId) => ({
+    userId,
+    name: directoryById.get(userId)?.name ?? null,
+    email: directoryById.get(userId)?.email ?? null,
+  }));
+
+  const items: InboxItem[] = activityRows.map((a) => ({
+    id: a.id,
+    boardId: a.boardId,
+    boardName: boardNameById.get(a.boardId) ?? 'Unknown board',
+    cardId: a.cardId,
+    cardTitle: a.cardId ? (cardTitleById.get(a.cardId) ?? null) : null,
+    actorId: a.actorId,
+    type: a.type,
+    payload: a.payload === null ? null : (JSON.parse(a.payload) as unknown),
+    createdAt: a.createdAt,
+  }));
+
+  return { items, lists: listRows, labels: labelRows, members };
+}
+
+/**
+ * For the sidebar's unseen badge — a cheap existence check, not a full feed
+ * fetch. Excludes the actor's own activity from "latest": your own action
+ * isn't news to you, so commenting on your own card shouldn't light up your
+ * own unseen indicator (the full feed still shows it — this only affects
+ * the badge).
+ */
+export async function hasUnseenInboxActivity(db: KanbanDb, actor: Actor): Promise<boolean> {
+  const boardIds = await memberBoardIds(db, actor);
+  if (boardIds.length === 0) return false;
+
+  const [latestActivityRows, seenRows] = await Promise.all([
+    db
+      .select({ createdAt: schema.activity.createdAt })
+      .from(schema.activity)
+      .where(and(inArray(schema.activity.boardId, boardIds), ne(schema.activity.actorId, actor.userId)))
+      .orderBy(desc(schema.activity.createdAt))
+      .limit(1),
+    db
+      .select({ lastSeenAt: schema.inboxState.lastSeenAt })
+      .from(schema.inboxState)
+      .where(eq(schema.inboxState.userId, actor.userId)),
+  ]);
+  const latest = latestActivityRows[0]?.createdAt;
+  if (latest === undefined) return false;
+  const lastSeenAt = seenRows[0]?.lastSeenAt ?? null;
+  return lastSeenAt === null || latest > lastSeenAt;
 }

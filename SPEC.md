@@ -7,7 +7,89 @@
 
 ## Status
 
-🚧 In progress — K.1–K.10 complete. K.10: board search/filter shipped —
+🚧 In progress — K.1–K.11 complete. K.11: Inbox (web) & notification wiring
+shipped. New `kanban_inbox_state` table (one row per user — `user_id` PK,
+`last_seen_at` nullable) is the entire read/unread model, matching SPEC's
+"lightweight — no per-row read state" instruction exactly; migrations
+regenerated for both dialects via `drizzle-kit generate` (no FK qualifier
+stripping needed — the table has no foreign keys). `/kanban/inbox`
+(`app/inbox/page.tsx`) is a plain Server Component — `getInboxFeed()`
+aggregates `kanban_activity` across every board the actor is a member of
+(scoped by `kanban_board_members`, the same membership gate `getBoardData`
+already uses) and unions `lists`/`labels`/directory-resolved `members`
+across those boards so `describeActivity()`/`displayName()` (K.8/K.9) can
+render every row without per-board context switching — global nanoid ids
+mean a flat union never collides across boards. Capped at
+`INBOX_PAGE_SIZE = 100` rows with no further pagination, a deliberate Phase
+1 scope decision the review checklist doesn't ask for. New pure
+`_lib/inbox.ts` (`dayLabel`/`groupByDay`, 7 unit tests) groups the
+already-newest-first feed into "Today"/"Yesterday"/dated sections via a
+single sequential pass — no re-sort. Each item deep-links to
+`/kanban/boards/<id>[?card=<id>]`, reusing K.9's URL convention exactly.
+`activity-copy.ts`'s `ActivityCopyContext` was narrowed from the full
+`BoardData['lists']`/`['labels']` to the minimal `{id,name}`/`{id,name,color}`
+shape it actually reads — required for `getInboxFeed`'s leaner
+multi-board union to satisfy the type, and a more honest signature either
+way.
+
+**Notification triggers** (`addComment`, extended): a recipient map is
+built per comment — the parent comment's author for a reply
+("New reply to your comment"), every card assignee for any comment,
+top-level or reply ("New comment on your card") — deduplicated so a person
+who is both (e.g. the assignee replied to their own earlier comment) is
+notified exactly once, and the commenter is never notified about their own
+comment. **Unseen-badge design decision, not explicitly specified but
+necessary for correctness:** marking the Inbox "seen" happens in a
+client-side `useEffect` on real mount (`InboxSeenMarker.tsx`), never as a
+side effect of the page's own server render — Next.js prefetches `<Link>`
+targets in the background (hovering the sidebar entry is enough), which
+would otherwise run the Server Component render, and the write inside it,
+purely from a hover the user never turned into an actual visit. The sidebar
+badge itself is computed in `layout.tsx` (now `async`), which runs on every
+in-plugin navigation, not just visits to Inbox specifically, so it stays
+current without the (client-component) sidebar needing its own fetch;
+`hasUnseenInboxActivity()` deliberately excludes the viewer's *own* activity
+from the "is there something new" check — commenting on your own card
+shouldn't light up your own unseen indicator, though the full feed still
+shows your own actions for a complete history.
+
+**A real gap caught live, not by tests, from muscle memory built earlier
+this session (K.9's identical migration mistake):** the first live visit to
+`/kanban/inbox` after adding the new table 500'd with
+`SQLite error: no such table: kanban_inbox_state` — this plugin's dev
+sqld instance runs plugin migrations at server *startup* only (confirmed via
+`docs/plugin-database.md` and this session's own established pattern), so a
+migration file added mid-session never applies to an already-running dev
+server without a restart. Recognized immediately from the exact same
+failure shape hit earlier for K.9's `sdk.directory` bundling issue — not a
+new class of bug, just a reminder that a schema change always needs a dev
+server restart in this environment, not just a file save. Fixed by
+restarting the dev server (`preview_stop`/`preview_start`); re-verified
+clean afterward.
+
+Verified live end-to-end in dev, including against real notification
+delivery, not stubs: visited `/kanban/inbox` and saw a real, correctly
+day-grouped, correctly-attributed cross-board history built from every
+action taken across this session's K.7–K.10 live verification (list/card
+mutations, label/assignee/due-date changes, comments, replies, membership
+changes) — board-level rows (member added/removed) correctly omit a card
+title in their caption line while card-level rows correctly include one;
+clicked a card-scoped row and confirmed it opened the exact right card via
+the `?card=` deep link (checked both the URL and the DOM, not just the
+`href`); assigned a real second directory account ("Dev Owner") to a card,
+posted a comment as the primary session, and queried the live dev sqld
+database directly (same technique as K.9) to confirm a real
+`"New comment on your card"` notification landed for the correct recipient,
+with the correct deep link and `source: "io.openfs.kanban"` (not
+`"unknown"` — the K.9-established `await headers()` requirement was applied
+correctly here from the start, unlike K.9's own first attempt). Reply
+notifications and the dedup-when-parent-author-is-also-an-assignee case are
+covered by automated tests (three dedicated cases) rather than a second live
+walkthrough, since the comment-notification code path is otherwise
+identical to the one just verified live and this session's time was better
+spent on the two things that could plausibly differ: the recipient-selection
+logic itself (test-covered in detail) and the live delivery mechanism
+(verified for real once, not per code path). K.10: board search/filter shipped —
 client-side only, instant, no server round trip. New `_lib/filter.ts`
 (`normalizeFilterQuery`/`matchesBoardFilter`) is pure and dnd-kit/React-free
 — same split as K.7's `order.ts` — so it's directly unit-tested (5 new
