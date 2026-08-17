@@ -171,8 +171,17 @@
 
 .boardHeaderActions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: var(--sv-space-3);
+  /* PageHeader's `.action` (packages/ui) is `flex-shrink: 0` — with no
+     width constraint here, this row would otherwise claim its full
+     one-line natural width and let `.text`'s `min-width: 0` absorb 100% of
+     any deficit, crushing the board name to a sliver on a narrow viewport
+     instead of ever actually using `flex-wrap`. Capping the width is what
+     forces a real second row under space pressure. */
+  max-width: min(420px, 60vw);
 }
 
 .memberAvatarStack {
@@ -265,12 +274,56 @@
   background: var(--sv-color-surface-sunken);
 }
 
+/* --- Board search / filter (K.10) ------------------------------------------ */
+
+.searchField {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--sv-space-2);
+  color: var(--sv-color-text-muted);
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  max-width: 160px;
+  min-width: 60px;
+  padding-left: var(--sv-space-8);
+  padding-right: var(--sv-space-8);
+}
+
+.searchClear {
+  position: absolute;
+  right: var(--sv-space-1);
+  padding: 0;
+}
+
+.searchMatch {
+  background: var(--sv-color-accent-subtle);
+  color: inherit;
+  border-radius: var(--sv-radius-sm);
+}
+
 .listsRow {
   display: flex;
   align-items: flex-start;
   gap: var(--sv-space-4);
   overflow-x: auto;
   padding-bottom: var(--sv-space-4);
+}
+
+/* A filter disables drag entirely (BoardView.tsx) — swap the grab affordance
+   back to a plain cursor so the UI doesn't promise a drag that won't start. */
+.listsRow[data-filtering] .listHeader,
+.listsRow[data-filtering] .cardTile {
+  cursor: default;
 }
 
 .list {

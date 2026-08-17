@@ -7,7 +7,85 @@
 
 ## Status
 
-🚧 In progress — K.1–K.9 complete. K.9: board members & share shipped —
+🚧 In progress — K.1–K.10 complete. K.10: board search/filter shipped —
+client-side only, instant, no server round trip. New `_lib/filter.ts`
+(`normalizeFilterQuery`/`matchesBoardFilter`) is pure and dnd-kit/React-free
+— same split as K.7's `order.ts` — so it's directly unit-tested (5 new
+tests) rather than only exercised through the UI. Matches a card's title or
+any attached label name, case-insensitive substring, against the
+already-loaded board payload; `BoardSearchField.tsx` is a controlled input
+in the header (positioned per CONCEPT.md's documented order — board name,
+search, member avatars, Share, Settings) with a clear "×" affordance shown
+only once there's a query. `BoardView.tsx`'s `cardsFor()` filters per list
+without touching the underlying drag-order state at all — only which cards
+get rendered — so clearing the query always reverts cleanly with nothing to
+reconcile. Matching cards get their matched title substring wrapped in a
+`<mark>` (`--sv-color-accent-subtle` background); a list with cards but zero
+matches shows a "No matching cards" placeholder, distinguished from a
+genuinely empty list via the list's own server-computed `cardCount` (so an
+always-empty list doesn't get a misleading "no matches" message it never
+earned). **Drag-disable decision (SPEC's "decide and document"):** a filter
+disables dragging entirely, board-wide (lists and cards both) — done by
+passing an empty `sensors` array to `DndContext` while filtering, which
+dnd-kit treats as "no activator registered anywhere," a total, simple kill
+switch requiring no per-component wiring. Chose disable-entirely over
+keeping drag "safe": since filtering hides non-matching cards from each
+list's rendered order (and thus from that list's `SortableContext` `items`),
+a drop mid-filter would compute its prev/next neighbours from a visibly
+incomplete order, silently reordering relative to cards the user can't see
+— simpler to just not allow it than to reason about correctness of a
+partial-order drag. `cursor: grab` is swapped back to `cursor: default` via
+a `data-filtering` attribute while disabled, so the UI doesn't visually
+promise a drag that won't start.
+
+**A real, self-introduced responsive bug caught live, not by tests:** adding
+a 200px-wide search field to the board header's already-populated action
+row (avatar stack, Share, Settings) overflowed the page at completely
+ordinary desktop widths — confirmed by comparing
+`document.documentElement.scrollWidth` against `window.innerWidth` at
+1280px (a real 152px overflow, not a screenshot-capture artifact, which the
+tool's fixed-size screenshot output was initially mistaken for) and, worse,
+at a narrower browser width the header action row's fixed content simply
+never wrapped at all — `PageHeader`'s `.action` slot (`packages/ui`, not
+this plugin's to edit) is `flex-shrink: 0` with an unconstrained child, so
+without an explicit width cap the whole row claims its natural one-line
+width regardless of `flex-wrap: wrap`, and 100% of any resulting deficit is
+absorbed by the title's `min-width: 0`, crushing "Website relaunch" to an
+unreadable ~35px sliver with the search box visually overlapping the text.
+Root-caused by direct `getBoundingClientRect()` measurement (not eyeballing
+screenshots, which this session's own tooling had already proven unreliable
+for exact pixel judgment) after two earlier fix attempts each looked right
+in a screenshot but didn't actually change the measured overflow. Fixed with
+three coordinated changes in `kanban.module.css`: `.boardHeaderActions`
+gets `flex-wrap: wrap` **and** an explicit `max-width: min(420px, 60vw)` —
+the cap is what actually forces a second row under real space pressure,
+since without one there was nothing making the row narrower than its
+natural content width in the first place; `.searchField` becomes a
+shrinkable flex item (`flex: 1 1 auto; min-width: 0`) so the search box is
+the part that gives first, ahead of the buttons/avatars, which can't shrink
+much below their own text+padding anyway. Re-verified with real
+`getBoundingClientRect()` measurements at both 480px (title and search box
+now have a clean 16px gap, no overlap) and 1280px (single row, comfortably
+inside the viewport) before considering this closed — a `scrollWidth`
+figure that persisted through the fix at 1280px turned out to be the
+`.listsRow`'s own pre-existing, intentional `overflow-x: auto` scroll
+content (three lists + "add list" wider than the visible column), unrelated
+to the header and not a real bug.
+
+Verified live end-to-end in dev: typed a query matching only one card's
+title (label-free at the time) — the other two lists correctly showed "No
+matching cards" with a `0` count badge, the match's title rendered a real
+`<mark>` around exactly the matched substring; typed a different query
+matching only that same card's *label*, not its title — same correct
+single-match result, and confirmed **no** `<mark>` rendered anywhere (a
+label match has nothing in the title to highlight, so none should appear);
+attempted a real `PointerEvent` drag sequence on a card while the filter was
+active — no `DragOverlay` appeared and `aria-pressed` never flipped,
+confirming the sensors-disabled kill switch actually holds; cleared the
+filter via the "×" button — all cards reappeared — and confirmed the exact
+same drag sequence activated normally afterward (overlay appeared, drop
+completed a real reorder), proving disable/re-enable both work, not just
+one direction. K.9: board members & share shipped —
 real multi-user boards. `sdk.directory.resolveUsers()` now resolves every
 board member's name/email inside `getBoardData` (`app/_lib/queries.ts`),
 carried on `BoardData.members`; `_lib/identity.ts`'s `displayName()` gained

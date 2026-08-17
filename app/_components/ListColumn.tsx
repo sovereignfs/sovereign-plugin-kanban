@@ -28,7 +28,17 @@ import { QuickAddCard } from './QuickAddCard';
  * grabbing its body would be ambiguous with dragging the cards inside it.
  * Matches Trello's own behaviour (grab a list by its title bar).
  */
-export function ListColumn({ list, cards }: { list: BoardList; cards: BoardCardSummary[] }) {
+export function ListColumn({
+  list,
+  cards,
+  query = '',
+}: {
+  list: BoardList;
+  cards: BoardCardSummary[];
+  /** K.10 search/filter — `cards` already only contains matches; `query` is
+   * just for title-highlighting and the "no matches" placeholder text. */
+  query?: string;
+}) {
   const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -64,8 +74,13 @@ export function ListColumn({ list, cards }: { list: BoardList; cards: BoardCardS
 
       <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
         <div ref={setDropRef} className={styles.listCards}>
+          {query && cards.length === 0 && list.cardCount > 0 && (
+            <Typography variant="caption" className={styles.descriptionPlaceholder}>
+              No matching cards
+            </Typography>
+          )}
           {cards.map((card) => (
-            <CardTile key={card.id} card={card} />
+            <CardTile key={card.id} card={card} query={query} />
           ))}
         </div>
       </SortableContext>

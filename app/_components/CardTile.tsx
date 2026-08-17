@@ -13,8 +13,28 @@ function formatDueDate(ms: number): string {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(ms));
 }
 
+/**
+ * Wraps the first case-insensitive occurrence of `query` in the title with a
+ * highlight (K.10's "match highlighting"). Only the first occurrence, not
+ * every one — a card title repeating the same substring more than once is
+ * rare enough that splitting for every match isn't worth the complexity for
+ * a Phase 1 filter.
+ */
+function HighlightedTitle({ title, query }: { title: string; query: string }) {
+  if (!query) return <>{title}</>;
+  const index = title.toLowerCase().indexOf(query);
+  if (index === -1) return <>{title}</>;
+  return (
+    <>
+      {title.slice(0, index)}
+      <mark className={styles.searchMatch}>{title.slice(index, index + query.length)}</mark>
+      {title.slice(index + query.length)}
+    </>
+  );
+}
+
 /** The card's visual content — shared between the real (interactive, sortable) tile and the DragOverlay preview. */
-function CardTileBody({ card }: { card: BoardCardSummary }) {
+function CardTileBody({ card, query = '' }: { card: BoardCardSummary; query?: string }) {
   const hasMetadata =
     card.checklistTotal > 0 || card.commentCount > 0 || card.dueDate !== null || card.assigneeCount > 0;
 
@@ -33,7 +53,7 @@ function CardTileBody({ card }: { card: BoardCardSummary }) {
       )}
 
       <Typography variant="body" className={styles.cardTitle}>
-        {card.title}
+        <HighlightedTitle title={card.title} query={query} />
       </Typography>
 
       {hasMetadata && (
@@ -74,7 +94,7 @@ function CardTileBody({ card }: { card: BoardCardSummary }) {
  * (see `useBoardDndSensors`) is what lets dnd-kit tell a plain click from a
  * drag start, so the `Link` navigation still fires normally on a real click.
  */
-export function CardTile({ card }: { card: BoardCardSummary }) {
+export function CardTile({ card, query = '' }: { card: BoardCardSummary; query?: string }) {
   const pathname = usePathname();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
@@ -91,7 +111,7 @@ export function CardTile({ card }: { card: BoardCardSummary }) {
       {...attributes}
       {...listeners}
     >
-      <CardTileBody card={card} />
+      <CardTileBody card={card} query={query} />
     </Link>
   );
 }

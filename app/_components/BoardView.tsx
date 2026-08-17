@@ -14,11 +14,13 @@ import { horizontalListSortingStrategy, SortableContext } from '@dnd-kit/sortabl
 import { Avatar, Button, EmptyState, PageHeader, useToast } from '@sovereignfs/ui';
 import { moveCard, reorderList } from '../actions';
 import { useBoardDndSensors } from '../_lib/dndSensors';
+import { matchesBoardFilter, normalizeFilterQuery } from '../_lib/filter';
 import { displayName } from '../_lib/identity';
 import { applyOrder, listIdFromDropId, neighborsOf, seedOrder } from '../_lib/order';
 import type { BoardCardSummary, BoardData, BoardList, CardDetail } from '../_lib/queries';
 import styles from '../kanban.module.css';
 import { AddListSlot } from './AddListSlot';
+import { BoardSearchField } from './BoardSearchField';
 import { BoardSettingsDialog } from './BoardSettingsDialog';
 import { BoardShareDialog } from './BoardShareDialog';
 import { CardDetailOverlay } from './CardDetailOverlay';
@@ -64,6 +66,7 @@ export function BoardView({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag>(null);
+  const [filterQuery, setFilterQuery] = useState('');
   const [, startTransition] = useTransition();
   const sensors = useBoardDndSensors();
 
@@ -77,10 +80,20 @@ export function BoardView({
     .map((id) => listById.get(id))
     .filter((l): l is BoardList => l !== undefined);
 
+  // K.10 search/filter — client-side only, over the already-loaded board
+  // payload (title + label names), instant, no server round trip. The
+  // underlying `order` (drag source of truth) is never touched by
+  // filtering — only which cards `cardsFor` returns for rendering — so
+  // clearing the query always reverts cleanly with nothing to reconcile.
+  const trimmedQuery = normalizeFilterQuery(filterQuery);
+  const isFiltering = trimmedQuery.length > 0;
+
   function cardsFor(listId: string): BoardCardSummary[] {
-    return (order.cardOrderByList[listId] ?? [])
+    const ordered = (order.cardOrderByList[listId] ?? [])
       .map((id) => cardById.get(id))
       .filter((c): c is BoardCardSummary => c !== undefined);
+    if (!isFiltering) return ordered;
+    return ordered.filter((card) => matchesBoardFilter(card, trimmedQuery));
   }
 
   function handleDragStart(event: DragStartEvent): void {
@@ -164,6 +177,7 @@ export function BoardView({
         headingLevel={1}
         action={
           <div className={styles.boardHeaderActions}>
+            <BoardSearchField value={filterQuery} onChange={setFilterQuery} />
             <MemberAvatarStack members={board.members} currentUser={currentUser} />
             <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)}>
               Share
@@ -182,15 +196,26 @@ export function BoardView({
       ) : (
         <DndContext
           id="kanban-board-dnd"
-          sensors={sensors}
+          // Filtering can hide cards from a list's rendered/SortableContext
+          // order without touching the real underlying order — dragging in
+          // that state would compute prev/next neighbours from a visibly
+          // incomplete list, silently reordering relative to hidden
+          // siblings in a way the user can't see. Passing an empty sensors
+          // array is a clean, total kill switch: no pointer or keyboard
+          // activator gets registered anywhere in the tree, so no drag can
+          // start at all while a filter is active (K.10 review checklist —
+          // decided here rather than "safe": simpler to reason about and
+          // matches this being a small Phase 1 filter, not a live reorder
+          // feature that needs to keep working mid-search).
+          sensors={isFiltering ? [] : sensors}
           collisionDetection={collisionDetectionStrategy}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={order.listOrder} strategy={horizontalListSortingStrategy}>
-            <div className={styles.listsRow}>
+            <div className={styles.listsRow} data-filtering={isFiltering || undefined}>
               {orderedLists.map((list) => (
-                <ListColumn key={list.id} list={list} cards={cardsFor(list.id)} />
+                <ListColumn key={list.id} list={list} cards={cardsFor(list.id)} query={trimmedQuery} />
               ))}
               <AddListSlot boardId={board.id} variant="inline" />
             </div>
