@@ -13,7 +13,7 @@
   },
   "icon": "icon.svg",
   "permissions": ["auth:session", "db:readWrite", "notifications:send"],
-  "repository": "https://github.com/kasunben/sovereign-plugin-kanban",
+  "repository": "https://github.com/sovereignfs/sovereign-plugin-kanban",
   "compatibility": {
     "minPlatformVersion": "0.94.0"
   }
