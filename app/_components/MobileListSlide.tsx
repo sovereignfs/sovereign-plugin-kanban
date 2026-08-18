@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useTransition, type KeyboardEvent } from 'react';
-import Link from 'next/link';
+import { useMemo, useOptimistic, useState, useTransition, type KeyboardEvent } from 'react';
+import { closestCenter, DndContext, type DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import {
   Button,
   Icon,
@@ -14,21 +15,23 @@ import {
   useCommitOnEnterOrBlur,
   useToast,
 } from '@sovereignfs/ui';
-import { renameList } from '../actions';
+import { moveCard, renameList } from '../actions';
+import { useMobileCardDndSensors } from '../_lib/dndSensors';
+import { neighborsOf } from '../_lib/order';
 import type { BoardCardSummary, BoardList } from '../_lib/queries';
 import styles from '../kanban.module.css';
-import { CardTileBody } from './CardTile';
+import { MobileCardTile } from './CardTile';
 import { DeleteListConfirm } from './ListColumn';
 import { QuickAddCard } from './QuickAddCard';
 
 /**
  * One carousel slide's contents (K.13) — the mobile equivalent of
- * ListColumn, but with no dnd-kit: card reorder/list reorder aren't part of
- * this task (K.15 owns mobile card reorder; list reorder isn't in Phase 1
- * mobile scope at all — see SPEC.md's K.13 status entry). Card tiles are
- * plain `<Link>`s reusing CardTile's exported CardTileBody, not CardTile
- * itself, since CardTile's `useSortable` call requires a DndContext ancestor
- * this carousel doesn't have.
+ * ListColumn. List reorder isn't in Phase 1 mobile scope at all (see K.13's
+ * own status entry); card reorder is K.15's own long-press `DndContext`,
+ * scoped to exactly this list's cards — a separate instance per slide (not
+ * one shared across the whole carousel) is what makes "within-list only"
+ * true at the code level rather than just true in practice because the
+ * other lists' cards happen to be off-screen.
  *
  * Rendered inside SwipableMobileCarouselSlide, itself gated by that
  * component's own mount-window logic — so this only actually mounts for the
@@ -49,6 +52,38 @@ export function MobileListSlide({
   const [renaming, setRenaming] = useState(false);
   const [addingCard, setAddingCard] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const sensors = useMobileCardDndSensors();
+
+  const cardById = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
+  const baseOrder = useMemo(() => cards.map((c) => c.id), [cards]);
+  const [order, dispatchOrder] = useOptimistic(baseOrder, (_state: string[], next: string[]) => next);
+  const [, startReorderTransition] = useTransition();
+
+  const orderedCards = order
+    .map((id) => cardById.get(id))
+    .filter((c): c is BoardCardSummary => c !== undefined);
+
+  function handleDragEnd(event: DragEndEvent): void {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromIndex = order.indexOf(String(active.id));
+    const toIndex = order.indexOf(String(over.id));
+    if (fromIndex === -1 || toIndex === -1) return;
+    const nextOrder = arrayMove(order, fromIndex, toIndex);
+    const { prevId, nextId } = neighborsOf(nextOrder, String(active.id));
+    startReorderTransition(async () => {
+      dispatchOrder(nextOrder);
+      const result = await moveCard({
+        cardId: String(active.id),
+        toListId: list.id,
+        prevCardId: prevId,
+        nextCardId: nextId,
+      });
+      if (!result.ok) {
+        toast.show({ title: 'Couldn’t reorder card', message: result.error, category: 'error' });
+      }
+    });
+  }
 
   return (
     <>
@@ -69,21 +104,23 @@ export function MobileListSlide({
 
       <SwipableMobileCarouselSlideBody>
         <div className={styles.mobileListCards}>
-          {cards.length === 0 && (
+          {orderedCards.length === 0 && (
             <Typography variant="caption" className={styles.descriptionPlaceholder}>
               No cards yet
             </Typography>
           )}
-          {cards.map((card) => (
-            <Link
-              key={card.id}
-              href={cardHrefFor(card.id)}
-              scroll={false}
-              className={styles.cardTile}
-            >
-              <CardTileBody card={card} />
-            </Link>
-          ))}
+          <DndContext
+            id={`mobile-list-dnd-${list.id}`}
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={order} strategy={verticalListSortingStrategy}>
+              {orderedCards.map((card) => (
+                <MobileCardTile key={card.id} card={card} href={cardHrefFor(card.id)} />
+              ))}
+            </SortableContext>
+          </DndContext>
         </div>
       </SwipableMobileCarouselSlideBody>
 

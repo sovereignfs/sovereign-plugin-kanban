@@ -34,10 +34,8 @@ function HighlightedTitle({ title, query }: { title: string; query: string }) {
 }
 
 /**
- * The card's visual content — shared between the real (interactive,
- * sortable) web tile, the DragOverlay preview, and K.13's plain (no
- * dnd-kit) mobile tile, which isn't inside any DndContext/SortableContext at
- * all — card reorder on mobile is K.15's long-press gesture, not yet built.
+ * The card's visual content — shared between the web tile, the DragOverlay
+ * preview, and K.15's MobileCardTile (below).
  */
 export function CardTileBody({ card, query = '' }: { card: BoardCardSummary; query?: string }) {
   const hasMetadata =
@@ -127,5 +125,40 @@ export function CardDragPreview({ card }: { card: BoardCardSummary }) {
     <div className={[styles.cardTile, styles.cardDragPreview].join(' ')}>
       <CardTileBody card={card} />
     </div>
+  );
+}
+
+/**
+ * K.15 — mobile's sortable card tile. Visually identical to CardTile, but:
+ * (a) `href` is passed in rather than built from `pathname` alone, since
+ * mobile's URL contract also carries `?list=<id>` (K.13); (b) no `data`
+ * passed to `useSortable` — the enclosing DndContext lives inside
+ * MobileListSlide, scoped to exactly one list's cards, so there's no
+ * cross-list collision branching to disambiguate, unlike web's shared
+ * board-wide DndContext; (c) rendered inside a DndContext using
+ * `useMobileCardDndSensors` (long-press TouchSensor), not
+ * `useBoardDndSensors` (short-distance PointerSensor) — `listeners` from
+ * `useSortable` adapts to whichever sensors are active on that ancestor
+ * automatically, so this component itself doesn't need to know which. See
+ * `.mobileCardTile` in kanban.module.css for why this does NOT reuse
+ * CardTile's own `touch-action: none`.
+ */
+export function MobileCardTile({ card, href }: { card: BoardCardSummary; href: string }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: card.id,
+  });
+
+  return (
+    <Link
+      ref={setNodeRef}
+      href={href}
+      scroll={false}
+      className={[styles.cardTile, styles.mobileCardTile].join(' ')}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      {...attributes}
+      {...listeners}
+    >
+      <CardTileBody card={card} />
+    </Link>
   );
 }

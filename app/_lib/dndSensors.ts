@@ -1,4 +1,10 @@
-import { KeyboardSensor, PointerSensor as LibPointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import {
+  KeyboardSensor,
+  PointerSensor as LibPointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 
@@ -38,6 +44,27 @@ class PointerSensor extends LibPointerSensor {
 export function useBoardDndSensors() {
   return useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: ACTIVATION_DISTANCE_PX } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+}
+
+// K.15 — long-press activation, not distance: a plain swipe (list navigation,
+// even a diagonal one with some vertical wobble) covers well more than
+// LONG_PRESS_TOLERANCE_PX within the first frame or two, cancelling the
+// pending drag before LONG_PRESS_DELAY_MS elapses and leaving the touch
+// sequence to the carousel's own native scroll-snap handling untouched. Only
+// a touch that stays still for the full delay — a real long-press — ever
+// activates a drag. This is the documented mitigation for the sovereign-tasks
+// dnd-kit/iOS-Safari touchmove conflict (see MobileCardTile's own doc
+// comment for the touch-action half of that fix).
+const LONG_PRESS_DELAY_MS = 220;
+const LONG_PRESS_TOLERANCE_PX = 8;
+
+export function useMobileCardDndSensors() {
+  return useSensors(
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: LONG_PRESS_DELAY_MS, tolerance: LONG_PRESS_TOLERANCE_PX },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 }

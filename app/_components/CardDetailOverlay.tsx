@@ -27,6 +27,7 @@ import { CardComments } from './CardComments';
 import { CardDescription } from './CardDescription';
 import { CardDueDate } from './CardDueDate';
 import { CardLabels } from './CardLabels';
+import { MoveCardDialog } from './MoveCardDialog';
 
 /**
  * `?card=<id>` overlay — the URL-addressable contract SPEC's Routes section
@@ -79,7 +80,13 @@ export function CardDetailOverlay({
       aria-label={cardDetail.title}
     >
       <div className={styles.cardOverlayBody}>
-        <CardHeader card={cardDetail} listName={list?.name} onClose={close} />
+        <CardHeader
+          card={cardDetail}
+          board={board}
+          listName={list?.name}
+          isMobile={isMobile}
+          onClose={close}
+        />
         <CardLabels card={cardDetail} boardId={board.id} boardLabels={board.labels} />
         <CardDueDate card={cardDetail} />
         <CardAssignees card={cardDetail} members={board.members} currentUser={currentUser} />
@@ -98,16 +105,21 @@ export function CardDetailOverlay({
 
 function CardHeader({
   card,
+  board,
   listName,
+  isMobile,
   onClose,
 }: {
   card: CardDetail;
+  board: BoardData;
   listName: string | undefined;
+  isMobile: boolean;
   onClose: () => void;
 }) {
   const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [title, setTitle] = useState(card.title);
   const [titlePending, startTitleTransition] = useTransition();
   const [deletePending, startDeleteTransition] = useTransition();
@@ -158,7 +170,17 @@ function CardHeader({
         onClose={() => setMenuOpen(false)}
         align="right"
         aria-label="Card options"
-        items={[{ label: 'Delete card', icon: 'trash-2', destructive: true, onSelect: () => setDeleteOpen(true) }]}
+        items={[
+          // K.15 — "Move to…" is the mobile-only, non-drag path for a
+          // cross-list move (CONCEPT.md: "Action menu only... never drag" on
+          // mobile, vs. web's whole-card drag, K.7). Kept off the desktop
+          // menu deliberately — web already has drag for this, and adding a
+          // redundant menu entry there is outside K.15's own scope.
+          ...(isMobile
+            ? [{ label: 'Move to…', icon: 'external-link' as const, onSelect: () => setMoveOpen(true) }]
+            : []),
+          { label: 'Delete card', icon: 'trash-2' as const, destructive: true, onSelect: () => setDeleteOpen(true) },
+        ]}
       />
       {listName && (
         <Typography variant="caption" className={styles.cardBreadcrumb}>
@@ -189,6 +211,8 @@ function CardHeader({
           }}
         />
       )}
+
+      {moveOpen && <MoveCardDialog card={card} board={board} onClose={() => setMoveOpen(false)} />}
     </div>
   );
 }

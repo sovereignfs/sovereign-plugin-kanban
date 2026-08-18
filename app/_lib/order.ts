@@ -96,3 +96,19 @@ export function neighborsOf(order: string[], id: string): { prevId: string | nul
   if (index === -1) return { prevId: null, nextId: null };
   return { prevId: order[index - 1] ?? null, nextId: order[index + 1] ?? null };
 }
+
+/**
+ * K.15's "Move to…" — `moveCard`'s neighbour args for dropping a card at the
+ * very top or bottom of a target list, from that list's own cards (any
+ * order — sorted here by `position`, the same field the server itself
+ * orders by, so this is correct regardless of what order `targetListCards`
+ * arrives in).
+ */
+export function topBottomNeighbors(
+  targetListCards: Array<{ id: string; position: number }>,
+  edge: 'top' | 'bottom',
+): { prevCardId: string | null; nextCardId: string | null } {
+  const sorted = [...targetListCards].sort((a, b) => a.position - b.position);
+  if (edge === 'top') return { prevCardId: null, nextCardId: sorted[0]?.id ?? null };
+  return { prevCardId: sorted[sorted.length - 1]?.id ?? null, nextCardId: null };
+}

@@ -7,7 +7,118 @@
 
 ## Status
 
-🚧 In progress — K.1–K.14 complete. K.14: Mobile card detail (full-screen)
+🚧 In progress — K.1–K.15 complete. K.15: Mobile card reorder & "Move to…"
+shipped — the decided mobile movement model (CONCEPT.md): long-press
+vertical drag for within-list reorder, action menu only (never drag) for
+cross-list moves. New `useMobileCardDndSensors()` (`_lib/dndSensors.ts`)
+configures `TouchSensor` with a delay-based activation constraint (220ms +
+8px tolerance) instead of web's short-distance `PointerSensor` — a plain
+swipe (list navigation, even a diagonal one with real vertical wobble)
+covers well more than 8px within the first frame or two, cancelling the
+pending drag before the delay elapses and leaving the gesture to the
+carousel's own native scroll-snap handling untouched; only a touch that
+stays still for the full 220ms — a real long-press — ever activates. Each
+`MobileListSlide` gets its own `DndContext`+`SortableContext` scoped to
+exactly that list's own cards (a new `MobileCardTile` in `CardTile.tsx`,
+reusing `CardTileBody`) — a separate instance per slide, not one shared
+across the whole carousel, is what makes "within-list only" true at the
+code level rather than true only because the other lists' cards happen to
+be off-screen. Reorder itself mirrors `BoardView`'s existing
+`useOptimistic` pattern, scoped down to one list's card-id array, computing
+`moveCard`'s prev/next neighbour args via the already-tested `neighborsOf`.
+
+**A real, proactively-caught touch-action bug, not just theory.**
+`MobileCardTile` deliberately does NOT inherit `.cardTile`'s existing
+`touch-action: none` (correct for web, where there's no competing
+horizontal gesture) — `touch-action` is evaluated declaratively at
+`touchstart`, before any JS (including dnd-kit's own delay-based
+activation-constraint decision) runs, so `none` on the element a swipe
+*starts* on would tell the browser to skip its own native scroll-snap
+handling for that whole gesture regardless of whether dnd-kit ultimately
+activates a drag or cancels — silently breaking the carousel swipe on every
+touch that happens to start on top of a card (most of a slide's area).
+Fixed with a `.mobileCardTile { touch-action: auto; }` override (declared
+after `.cardTile` in the same file so it wins the tie), matching
+`SwipableMobileCarouselSlideBody`'s own identical `.body` reasoning almost
+verbatim. Also proactively gated `.cardTile:hover` behind
+`@media (hover: hover)` — un-gated, it's a documented WebKit "stuck hover
+after touch" risk (docs/architecture-rules.md), and `.cardTile` is now
+shared with a real touch-drag surface for the first time. Both fixes are
+directly responsive to this task's own review checklist items ("diagonal
+swipes must navigate lists, never lift a card"; "no stuck hover states
+after touch") — found by reading the DS's existing `touch-action`
+documentation and this codebase's own architecture rules before writing
+any test, not by trial and error.
+
+**"Move to…"** is a new `MoveCardDialog.tsx`, reachable from `CardHeader`'s
+existing "…" menu — gated `isMobile`-only (web already has drag for this,
+K.7; a redundant menu entry there is outside K.15's own scope). A native
+`<select>` (`@sovereignfs/ui`'s `Select`, using the OS's own picker — no
+custom dropdown to fight on mobile) for the target list, deliberately
+excluding the card's current list, and a `SegmentedControl` for a binary
+top/bottom choice — not an arbitrary-position picker, matching SPEC's own
+"top/bottom position choice" wording exactly. The prev/next-neighbour
+computation for "drop at the very top/bottom of a target list" was pulled
+into a new pure `topBottomNeighbors()` (`_lib/order.ts`, 4 new unit tests)
+rather than left inline, matching this file's established pattern of
+keeping mutation-adjacent logic testable without the DOM. Reuses `moveCard`
+completely unchanged — the exact same action web's own drag-and-drop already
+calls.
+
+Verified live end-to-end, with real evidence, not just visual inspection:
+opened a card, confirmed "Move to…" only appears on mobile and correctly
+excludes the current list from the picker, moved a card to a different list
+(target + position both selected), confirmed the dialog closed and the
+card's "in `<List>`" breadcrumb updated immediately, then confirmed via a
+completely fresh page reload that the move had genuinely persisted
+server-side (the source list dropped to 0 cards, the target list gained
+it). Long-press-drag reorder was verified via synthetic `TouchEvent`
+dispatch (`touchstart`/`touchmove`/`touchend` with real ~350ms holds,
+constructed after reading dnd-kit's own source to get two details right
+that a naive test would have gotten wrong: (1) dnd-kit attaches its
+move/end listeners directly to the *original* `touchstart` target, not
+`document` — matching the real Touch Events API's own no-retargeting
+behavior — so move/end events must be dispatched on that same original
+element, not wherever the finger is now; (2) the delay-based activation
+constraint uses `setTimeout`, confirmed by first observing the dragged
+card's `opacity` flip to `0.4` and `aria-pressed="true"` after the hold,
+*before* sending any move, isolating activation from the move/reorder logic
+as two separately-verified steps rather than one combined guess). The full
+sequence correctly re-ordered two cards in the DOM, and a
+`POST /kanban/boards/…` (the `moveCard` server action) was confirmed in the
+dev server's own request log; a fresh reload afterward showed the new order
+had persisted. Also verified: the drag genuinely activates only after the
+full hold (confirmed via the same opacity/aria-pressed check taken
+immediately after touchstart+350ms, before any move was sent).
+
+**Not verified live: the explicit swipe-vs-drag disambiguation itself**
+(the review checklist's own headline scenario) **and the simulator gesture
+matrix.** This session's browser preview became genuinely unreliable partway
+through testing — a new, more disruptive issue than the "backgrounded tab
+blocks real focus" limitation K.14 already documented: React's own
+hydration/reconciliation intermittently stalled outright (a Suspense
+boundary's resolved content stayed in an inert `<template>` and was never
+swapped into the live tree; `useIsMobile()`'s mount effect stopped firing
+at all, permanently stuck reporting desktop regardless of viewport width),
+requiring a full dev-server restart to recover, and recurring again
+afterward across fresh tabs despite multiple restarts and waits up to 15s.
+Root cause not fully identified — plausibly this long session's accumulated
+long-lived connections (the dev server's own request log showed
+notification SSE streams open 100+ seconds) or React deprioritizing work it
+perceives as background-tab-priority, compounding the already-documented
+`visibilityState: "hidden"` limitation. The swipe-cancellation half of the
+mitigation (tolerance-triggered cancellation) is dnd-kit's own standard,
+widely-used `activationConstraint` mechanism — not custom logic — and the
+activation-requires-holding-still half was directly verified (above), which
+is the half specific to this integration; the untested half is the
+library's own well-established behavior. Documented rather than
+re-attempted a third/fourth time, matching K.12–K.14's own precedent for
+this class of environmental limitation — including a fresh attempt at the
+iOS Simulator, which was not repeated here given K.13's already-documented,
+unresolved login text-entry blocker and this session's now-broader evidence
+that the tooling itself, not just the simulator, is the limiting factor.
+
+K.14: Mobile card detail (full-screen)
 shipped. `CardDetailOverlay` now passes `size={isMobile ? 'full' : 'lg'}` to
 `Dialog` — a real distinction only on desktop, since Dialog's own CSS
 already forces every size to a full-screen sheet under 768px width

@@ -437,13 +437,38 @@
   touch-action: none;
 }
 
-.cardTile:hover {
-  border-color: var(--sv-color-border-strong);
+/* Gated to real pointer devices — un-gated :hover can get "stuck" showing
+   the hovered border after a touch/long-press on iOS Safari until the next
+   unrelated tap (a documented WebKit quirk, see docs/architecture-rules.md),
+   and .cardTile is shared with K.15's MobileCardTile. */
+@media (hover: hover) {
+  .cardTile:hover {
+    border-color: var(--sv-color-border-strong);
+  }
 }
 
 .cardTile:focus-visible {
   outline: 2px solid var(--sv-color-focus-ring);
   outline-offset: 2px;
+}
+
+/* K.15 — MobileCardTile shares .cardTile's visuals but must NOT inherit its
+   touch-action: none. That value is correct for web (no competing gesture on
+   that axis), but on mobile the card tile sits inside
+   SwipableMobileCarouselSlideBody's horizontally-swipeable slide — touch-
+   action is evaluated declaratively at touchstart, before any JS (including
+   dnd-kit's own delay-based activation-constraint decision) runs, so
+   touch-action: none on the element a swipe *starts* on would tell the
+   browser to skip its own native scroll-snap handling for that whole gesture
+   regardless of whether dnd-kit's TouchSensor ultimately decides to activate
+   a drag or cancel. Left at the default (auto) instead, matching
+   SwipableMobileCarouselSlideBody's own .body rule and its identical
+   reasoning — native gesture arbitration plus the long-press delay is what
+   correctly routes a swipe to the carousel and a hold-then-drag to dnd-kit,
+   not a CSS axis lock. Declared after .cardTile so it wins the tie (equal
+   specificity, later source order) without an explicit override selector. */
+.mobileCardTile {
+  touch-action: auto;
 }
 
 .cardDragPreview {
@@ -867,4 +892,12 @@
 
 .mobileAddListSlide {
   padding: var(--sv-space-4) var(--sv-space-1);
+}
+
+/* --- Move card dialog (K.15) ------------------------------------------------ */
+
+.moveCardField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
 }

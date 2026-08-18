@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOrder, neighborsOf, seedOrder, type OrderState } from '../order';
+import { applyOrder, neighborsOf, seedOrder, topBottomNeighbors, type OrderState } from '../order';
 
 const lists = [{ id: 'l1' }, { id: 'l2' }, { id: 'l3' }];
 const cards = [
@@ -98,5 +98,32 @@ describe('neighborsOf', () => {
 
   it('returns nulls for a single-item order', () => {
     expect(neighborsOf(['a'], 'a')).toEqual({ prevId: null, nextId: null });
+  });
+});
+
+describe('topBottomNeighbors', () => {
+  const targetCards = [
+    { id: 'c2', position: 2 },
+    { id: 'c1', position: 1 },
+    { id: 'c3', position: 3 },
+  ];
+
+  it('top: prevCardId null, nextCardId the lowest-position card, regardless of input order', () => {
+    expect(topBottomNeighbors(targetCards, 'top')).toEqual({ prevCardId: null, nextCardId: 'c1' });
+  });
+
+  it('bottom: prevCardId the highest-position card, nextCardId null', () => {
+    expect(topBottomNeighbors(targetCards, 'bottom')).toEqual({ prevCardId: 'c3', nextCardId: null });
+  });
+
+  it('both edges are null for an empty target list', () => {
+    expect(topBottomNeighbors([], 'top')).toEqual({ prevCardId: null, nextCardId: null });
+    expect(topBottomNeighbors([], 'bottom')).toEqual({ prevCardId: null, nextCardId: null });
+  });
+
+  it('a single-card target list is both its own top and bottom neighbour set', () => {
+    const single = [{ id: 'only', position: 5 }];
+    expect(topBottomNeighbors(single, 'top')).toEqual({ prevCardId: null, nextCardId: 'only' });
+    expect(topBottomNeighbors(single, 'bottom')).toEqual({ prevCardId: 'only', nextCardId: null });
   });
 });
