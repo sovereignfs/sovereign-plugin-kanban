@@ -7,7 +7,63 @@
 
 ## Status
 
-🚧 In progress — K.1–K.15 complete. K.15: Mobile card reorder & "Move to…"
+🚧 In progress — K.1–K.15 complete (`0.15.1` hotfix on top of K.15's own
+`0.15.0`; see below). `0.15.0` → `0.15.1` fixes a real hydration mismatch
+found live while testing K.14, reported directly rather than re-discovered:
+`CardActivity.tsx` (and, on inspection, `CardComments.tsx` and
+`InboxFeedList.tsx` too) called `timeAgo()` (`_lib/time.ts`) straight from
+render — a plain function that calls `Date.now()` internally, so its output
+depends on exactly when it runs. Whenever meaningful wall-clock time passed
+between the server render and the client's first hydration pass, the
+server's text ("2m ago") and the client's ("1m ago") disagreed, and React
+couldn't reconcile the mismatch — a real, reproducible "Recoverable Error"
+in the dev overlay on every card-detail open, not just a console warning:
+the whole `CardDetailOverlay` dialog subtree got discarded and rebuilt
+right after opening, a visible flash, and — caught live, not theorized —
+this was what silently broke a programmatic `.focus()` call on the card
+title input during K.14's own browser-automation testing (the input got
+remounted as a new DOM node out from under the held reference). Not scoped
+to K.14 at all — `CardActivity.tsx` was untouched by that task, and the
+same bug hits the desktop modal (K.8) equally.
+
+Fixed with a new `TimeAgo.tsx` client component: both the server render and
+the client's first paint (before hydration compares them) render an empty
+string — deterministic, nothing to mismatch — and the real relative label
+fills in via a `useEffect` immediately after mount, a normal client-side
+update rather than a hydration diff. This also incidentally closes a
+second, separate hydration risk in `timeAgo()`'s own >30-day fallback
+branch, which formats an absolute date via `Intl.DateTimeFormat(undefined,
+...)` — locale-dependent, so a server whose Node locale differs from the
+client browser's could mismatch there too; deferring the *entire* label to
+post-mount sidesteps that class of bug as well, not just the relative-
+bucket one, without needing a second fix. All three call sites (`
+CardActivity`, `CardComments`, and `InboxFeedList` — the last a plain
+Server Component with no `'use client'` of its own; rendering `TimeAgo` as
+a child needs none, standard RSC composition) now go through this one
+component rather than calling `timeAgo()` directly. `time.ts`'s own
+`timeAgo()` function is unchanged — still the plain, correct-as-a-pure-
+function utility; only how it gets *rendered* needed fixing, matching how
+the bug was actually diagnosed.
+
+Verified live across three separate fresh browser tabs (this session's
+preview browser has had recurring React-scheduling flakiness since K.15 —
+see that task's own status entry — so a single check on a possibly-stuck
+tab isn't trusted on its own here): opened a card with real activity and
+confirmed the dev overlay's issue count read `0` immediately after open,
+where it previously read `1` on every single open; confirmed the same on a
+card with real top-level comments and replies, and on `/kanban/inbox`
+(exercising `InboxFeedList`'s Server-Component-parent case specifically);
+and directly inspected the rendered caption elements to confirm real
+relative-time text ("11h ago", "43m ago", etc.) fills in correctly post-
+mount rather than the fix silently leaving them stuck blank. One check hit
+a stale-looking blank state on a tab that turned out to be the
+already-documented environmental flakiness, not this fix — confirmed by
+immediately re-checking the identical URL in a brand new tab, which
+rendered correctly; noted here rather than silently discarded since it's a
+useful data point on how unreliable this session's browser surface had
+become by this point, not a gap in the fix itself.
+
+K.15: Mobile card reorder & "Move to…"
 shipped — the decided mobile movement model (CONCEPT.md): long-press
 vertical drag for within-list reorder, action menu only (never drag) for
 cross-list moves. New `useMobileCardDndSensors()` (`_lib/dndSensors.ts`)

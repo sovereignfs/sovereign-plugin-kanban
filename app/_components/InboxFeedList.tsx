@@ -3,15 +3,18 @@ import { EmptyState, Typography } from '@sovereignfs/ui';
 import { describeActivity } from '../_lib/activity-copy';
 import { groupByDay } from '../_lib/inbox';
 import { displayName } from '../_lib/identity';
-import { timeAgo } from '../_lib/time';
 import type { InboxFeed } from '../_lib/queries';
 import type { CurrentUser } from './BoardView';
 import styles from '../kanban.module.css';
+import { TimeAgo } from './TimeAgo';
 
 /**
  * Server-renderable — `describeActivity`/`displayName`/`groupByDay` are
  * plain functions (no hooks, no client-only APIs), so this list needs no
  * `'use client'` of its own despite living alongside client components.
+ * `TimeAgo` (rendered below) is itself a client component, but a Server
+ * Component can render a Client Component as a child with no `'use client'`
+ * of its own — standard RSC composition, not an exception to the rule above.
  */
 export function InboxFeedList({ feed, currentUser }: { feed: InboxFeed; currentUser: CurrentUser }) {
   if (feed.items.length === 0) {
@@ -54,7 +57,7 @@ export function InboxFeedList({ feed, currentUser }: { feed: InboxFeed; currentU
                   </Typography>
                   <Typography variant="caption" className={styles.inboxItemMeta}>
                     {item.boardName}
-                    {item.cardTitle ? ` · ${item.cardTitle}` : ''} · {timeAgo(item.createdAt)}
+                    {item.cardTitle ? ` · ${item.cardTitle}` : ''} · <TimeAgo ms={item.createdAt} />
                   </Typography>
                 </Link>
               </li>

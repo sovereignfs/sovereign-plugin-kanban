@@ -4,10 +4,10 @@ import { useState, useTransition } from 'react';
 import { Avatar, Button, Textarea, Typography, useToast } from '@sovereignfs/ui';
 import { addComment } from '../actions';
 import { displayName } from '../_lib/identity';
-import { timeAgo } from '../_lib/time';
 import type { BoardData, CardDetail } from '../_lib/queries';
 import type { CurrentUser } from './BoardView';
 import styles from '../kanban.module.css';
+import { TimeAgo } from './TimeAgo';
 
 type Comment = CardDetail['comments'][number];
 
@@ -111,7 +111,9 @@ function CommentRow({
           <Typography variant="body" as="strong">
             {author}
           </Typography>
-          <Typography variant="caption">{timeAgo(comment.createdAt)}</Typography>
+          <Typography variant="caption">
+            <TimeAgo ms={comment.createdAt} />
+          </Typography>
         </div>
         <Typography variant="body">{comment.body}</Typography>
         {canReply && (

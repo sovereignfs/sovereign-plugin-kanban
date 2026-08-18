@@ -6,10 +6,10 @@ import { getMoreCardActivity } from '../actions';
 import { activityCursorFor, type ActivityCursor } from '../_lib/activity-pagination';
 import { describeActivity } from '../_lib/activity-copy';
 import { displayName } from '../_lib/identity';
-import { timeAgo } from '../_lib/time';
 import type { BoardData, CardDetail } from '../_lib/queries';
 import type { CurrentUser } from './BoardView';
 import styles from '../kanban.module.css';
+import { TimeAgo } from './TimeAgo';
 
 /**
  * Paged, newest-first (K.8 review checklist). Page 1 is server-fetched
@@ -83,7 +83,7 @@ export function CardActivity({
                   resolveName: (userId) => displayName(userId, currentUser, board.members),
                 })}
                 {' · '}
-                {timeAgo(item.createdAt)}
+                <TimeAgo ms={item.createdAt} />
               </Typography>
             </li>
           ))}
