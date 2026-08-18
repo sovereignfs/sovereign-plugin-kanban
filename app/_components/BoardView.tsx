@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useOptimistic, useState, useTransition } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   closestCenter,
   closestCorners,
@@ -11,7 +12,17 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext } from '@dnd-kit/sortable';
-import { Avatar, Button, EmptyState, PageHeader, useToast } from '@sovereignfs/ui';
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  Icon,
+  Menu,
+  PageHeader,
+  Typography,
+  useIsMobile,
+  useToast,
+} from '@sovereignfs/ui';
 import { moveCard, reorderList } from '../actions';
 import { useBoardDndSensors } from '../_lib/dndSensors';
 import { matchesBoardFilter, normalizeFilterQuery } from '../_lib/filter';
@@ -26,6 +37,7 @@ import { BoardShareDialog } from './BoardShareDialog';
 import { CardDetailOverlay } from './CardDetailOverlay';
 import { CardDragPreview } from './CardTile';
 import { ListColumn, ListDragPreview } from './ListColumn';
+import { MobileBoardView } from './MobileBoardView';
 
 export interface CurrentUser {
   id: string;
@@ -63,6 +75,8 @@ export function BoardView({
   currentUser: CurrentUser;
 }) {
   const toast = useToast();
+  const pathname = usePathname();
+  const isMobile = useIsMobile();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag>(null);
@@ -170,30 +184,65 @@ export function BoardView({
     });
   }
 
+  // K.13 — mobile keeps the card overlay's URL contract but adds `?list=`
+  // (see MobileBoardView's own doc comment); closing must return to the
+  // list the card was opened from, not the bare board URL, or the carousel
+  // would silently reset to slide 0 on every close. Web has no `list`
+  // concept, so `closeHref` stays undefined there — CardDetailOverlay falls
+  // back to its original bare-`pathname` behavior unchanged.
+  const closeHref = isMobile && cardDetail ? `${pathname}?list=${cardDetail.listId}` : undefined;
+
   return (
     <>
-      <PageHeader
-        title={board.name}
-        headingLevel={1}
-        action={
-          <div className={styles.boardHeaderActions}>
-            <BoardSearchField value={filterQuery} onChange={setFilterQuery} />
-            <MemberAvatarStack members={board.members} currentUser={currentUser} />
-            <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)}>
-              Share
-            </Button>
-            {board.role === 'owner' && (
-              <Button variant="secondary" size="sm" onClick={() => setSettingsOpen(true)}>
-                Settings
-              </Button>
+      {isMobile ? (
+        // Single flex column so the header's natural height and the
+        // carousel's fill-the-rest height are computed relative to EACH
+        // OTHER (flex: 0 0 auto / flex: 1 1 auto; min-height: 0) — not
+        // independently guessed via viewport arithmetic, which is what
+        // originally overshot the available space and rendered the
+        // carousel partly behind the fixed footer (caught live via
+        // getBoundingClientRect, not the screenshot alone — see SPEC.md's
+        // K.13 status entry).
+        <div className={styles.mobileBoardWrap}>
+          <MobileBoardHeader
+            board={board}
+            onOpenShare={() => setShareOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+          <div className={styles.mobileBoardContent}>
+            {board.lists.length === 0 ? (
+              <EmptyBoard boardId={board.id} />
+            ) : (
+              <MobileBoardView board={board} orderedLists={orderedLists} cardsFor={cardsFor} />
             )}
           </div>
-        }
-      />
-
-      {board.lists.length === 0 ? (
-        <EmptyBoard boardId={board.id} />
+        </div>
       ) : (
+        <>
+          <PageHeader
+            title={board.name}
+            headingLevel={1}
+            action={
+              <div className={styles.boardHeaderActions}>
+                <BoardSearchField value={filterQuery} onChange={setFilterQuery} />
+                <MemberAvatarStack members={board.members} currentUser={currentUser} />
+                <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)}>
+                  Share
+                </Button>
+                {board.role === 'owner' && (
+                  <Button variant="secondary" size="sm" onClick={() => setSettingsOpen(true)}>
+                    Settings
+                  </Button>
+                )}
+              </div>
+            }
+          />
+
+          {board.lists.length === 0 ? <EmptyBoard boardId={board.id} /> : null}
+        </>
+      )}
+
+      {!isMobile && board.lists.length > 0 && (
         <DndContext
           id="kanban-board-dnd"
           // Filtering can hide cards from a list's rendered/SortableContext
@@ -237,8 +286,66 @@ export function BoardView({
         <BoardShareDialog board={board} currentUser={currentUser} onClose={() => setShareOpen(false)} />
       )}
 
-      <CardDetailOverlay board={board} cardDetail={cardDetail} currentUser={currentUser} />
+      <CardDetailOverlay
+        board={board}
+        cardDetail={cardDetail}
+        currentUser={currentUser}
+        closeHref={closeHref}
+      />
     </>
+  );
+}
+
+/**
+ * K.13 — compact mobile equivalent of the web PageHeader's action row.
+ * Rendered above both the carousel and the empty-board state (unlike
+ * MobileBoardView, which only handles the non-empty carousel), so Share/
+ * Settings stay reachable even before the board has any lists — a board
+ * with zero lists otherwise has no other affordance to reach them on
+ * mobile. No search field (K.10 is explicitly web-only per its own SPEC
+ * title) and no member avatar stack (the member list is already reachable
+ * via Share) — a deliberate scope cut to keep this compact, documented in
+ * SPEC.md's K.13 status entry.
+ */
+function MobileBoardHeader({
+  board,
+  onOpenShare,
+  onOpenSettings,
+}: {
+  board: BoardData;
+  onOpenShare: () => void;
+  onOpenSettings: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <div className={styles.mobileBoardHeader}>
+      <Typography variant="h4" as="h1" className={styles.mobileBoardTitle}>
+        {board.name}
+      </Typography>
+      <Menu
+        trigger={
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Board options"
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <Icon name="ellipsis-vertical" size="sm" aria-hidden={true} />
+          </Button>
+        }
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        align="right"
+        aria-label="Board options"
+        items={[
+          { label: 'Share', icon: 'upload', onSelect: onOpenShare },
+          ...(board.role === 'owner'
+            ? [{ label: 'Settings', icon: 'settings' as const, onSelect: onOpenSettings }]
+            : []),
+        ]}
+      />
+    </div>
   );
 }
 

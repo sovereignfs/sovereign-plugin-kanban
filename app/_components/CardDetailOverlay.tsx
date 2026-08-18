@@ -31,21 +31,27 @@ import { CardLabels } from './CardLabels';
  * server-side in `page.tsx`; this component is purely presentational/
  * interactive — no client-side fetch of its own.
  *
- * Close navigates to the bare board URL (drops the query) rather than
- * `router.back()`: unlike the platform's own `@modal` overlay-shell
- * mechanism (docs/architecture-rules.md), this is a plain same-page Dialog
- * that must also behave correctly when `?card=` is opened as a fresh deep
- * link with no in-app history to unwind — back() would leave the plugin
- * entirely in that case.
+ * Close navigates to `closeHref` (drops the `card` query, defaulting to the
+ * bare board URL) rather than `router.back()`: unlike the platform's own
+ * `@modal` overlay-shell mechanism (docs/architecture-rules.md), this is a
+ * plain same-page Dialog that must also behave correctly when `?card=` is
+ * opened as a fresh deep link with no in-app history to unwind — back()
+ * would leave the plugin entirely in that case.
  */
 export function CardDetailOverlay({
   board,
   cardDetail,
   currentUser,
+  closeHref,
 }: {
   board: BoardData;
   cardDetail: CardDetail | null;
   currentUser: CurrentUser;
+  /** K.13 — mobile passes `${pathname}?list=<cardDetail.listId>` so closing
+   *  returns to the carousel slide the card was opened from, instead of
+   *  resetting to the first list. Omit for the original bare-`pathname`
+   *  behavior (web, and mobile with no card open). */
+  closeHref?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -57,7 +63,7 @@ export function CardDetailOverlay({
   const list = board.lists.find((l) => l.id === cardDetail.listId);
 
   function close(): void {
-    router.push(pathname);
+    router.push(closeHref ?? pathname);
   }
 
   return (

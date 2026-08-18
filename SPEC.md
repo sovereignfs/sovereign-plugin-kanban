@@ -7,7 +7,119 @@
 
 ## Status
 
-🚧 In progress — K.1–K.12 complete. K.12: Mobile navigation & Home shipped —
+🚧 In progress — K.1–K.13 complete. K.13: Mobile Board view (carousel & list
+menu) shipped — a swipable, one-list-per-screen board using
+`@sovereignfs/ui`'s `SwipableMobileCarousel` compound component
+(`Slide`/`SlideHeader`/`SlideBody`/`SlideFooter` + `Dots`, `density="compact"`
+above 5 lists). New `MobileBoardView.tsx` (the carousel + per-list slides,
+each a new `MobileListSlide.tsx` — header with name/count/action-menu
+`(Add card / Rename list / Delete list)`, a plain scrollable card list in
+the body, `QuickAddCard` pinned in the footer) and a small `MobileBoardHeader`
+(board name + a single overflow `Menu` for Share/Settings) added directly in
+`BoardView.tsx`, gated by the same `useIsMobile()` branch K.12 established —
+web's existing `PageHeader`/`DndContext`/`ListColumn` tree is completely
+untouched. Card tap reuses K.6's existing `CardDetailOverlay` unchanged
+(still `Dialog size="lg"`) as the explicitly-scoped placeholder K.13's own
+spec calls for — restyling it to `size="full"` with mobile-optimized field
+layout is K.14's stated deliverable, not this one's. `CardTileBody` (from
+`CardTile.tsx`) and `DeleteListConfirm` (from `ListColumn.tsx`) were exported
+and reused as-is for the mobile tile/delete-confirm — mobile cards are plain
+`<Link>`s, deliberately not wrapped in dnd-kit's `useSortable` at all (no
+`DndContext` ancestor exists on this branch): card reorder is K.15's
+long-press gesture, not built yet, and list reorder isn't a K.13 or K.15
+deliverable — CONCEPT.md's interaction table describes it as a future
+"list action menu" affordance, but no Phase 1 task actually commits to
+building it, so it's out of scope here too, noted as a deliberate gap rather
+than silently dropped.
+
+**The active slide syncs to `?list=<listId>`, but deliberately never through
+Next's router** — `onNavigate` in `useCarouselRouteSync` calls
+`window.history.replaceState` directly. This board's data model loads every
+list and card up front in one `getBoardData` call (unlike a per-list-fetch
+carousel); routing a swipe through `router.replace` would re-fetch that
+entire RSC payload on every single swipe, exactly the "measurably laggier"
+pattern `SwipableMobileCarousel`'s own doc comment warns against.
+`usePathname()`/`useSearchParams()` are read exactly once (frozen at mount)
+to seed the initial slide from a deep link or real reload; after that the
+hook's own `activeIndex` state is the sole source of truth, and Next's router
+state going stale relative to it is expected, not a bug. Opening a card still
+goes through a real `<Link>` (existing, accepted per-open RSC cost, unchanged
+from web) — each slide builds that href from its own `list.id` directly, not
+from `activeIndex`, so it's correct even mid-swipe. `CardDetailOverlay`
+gained an optional `closeHref` prop (defaults to the original bare-`pathname`
+behavior, so web is untouched) — `BoardView` computes
+`${pathname}?list=${cardDetail.listId}` for it on mobile, so closing a card
+returns to the list it was opened from instead of silently resetting the
+carousel to slide 0. Verified live: jumping to a non-adjacent list, opening a
+card there, and closing it lands back on that same list, not "In Progress".
+
+**Two real layout bugs found live, both via `getBoundingClientRect`
+measurement, not the screenshot alone** (this session's established
+technique — screenshots have repeatedly proven misleading across earlier
+tasks): (1) first attempt gave the carousel `height: 100%`, expecting it to
+inherit the already-correct available height from `.main` (which — confirmed
+by direct measurement — genuinely does stretch to exactly the right
+`100dvh`-minus-header-minus-footer span). It rendered collapsed to its own
+content height instead, because `PageContainer`'s container box
+(`boards/[boardId]/page.tsx`'s `<PageContainer maxWidth="full">`, unchanged
+from web) is deliberately `height: auto` — most plugin pages are naturally
+tall and page-scrolling, so percentage-height doesn't propagate through it
+by design. (2) Switching to a direct `calc(100dvh - var(--sv-shell-header-
+height) - var(--sv-shell-footer-height))` overshot 16px past the fixed
+footer's own top edge, because that calc assumed the wrapper's own top
+coincided with the header's bottom edge — it doesn't, `PageContainer`'s own
+`padding-top` (`--sv-space-4`, confirmed via computed style: exactly 16px)
+sits between them. Fixed by subtracting that token too. Final layout: a
+single flex column (`MobileBoardHeader` + `.mobileBoardContent`, `flex: 1 1
+auto; min-height: 0`) so the header's natural height and the carousel's
+fill-the-rest height are computed relative to each other, not independently
+guessed twice. Re-verified via measurement after the fix: `wrap.bottom`
+(783) matched `footer.top` (783) exactly, zero overlap, zero gap.
+
+Verified live at a 390×844 mobile viewport: dot-jump navigation between
+lists (confirmed via both the settled `activeIndex` and the resulting
+`history.replaceState`-updated URL); the board options menu (Share opens
+`BoardShareDialog`, Settings opens the existing `BoardSettingsDialog`
+full-screen, both unchanged from web); the per-list menu (Add card, Rename
+list — input focuses and commits correctly; Delete list); the trailing
+"Add list" slide (a plain `AddListSlot variant="empty"` slide with no
+header, correctly excluded from the dot indicator's count so no dot is
+active while viewing it); single-list boards correctly suppress the dot
+indicator entirely (`orderedLists.length > 1` gate); and the empty-board
+state (`EmptyBoard`, shared with web) still renders with `MobileBoardHeader`
+above it, so Share/Settings stay reachable even on a board with zero lists —
+otherwise a board created but not yet populated would have no way to reach
+either on mobile at all, a real gap the K.9/K.11-established "board settings
+must stay reachable" precedent made worth closing here even though K.13's
+own deliverables bullet list doesn't spell it out.
+
+**Not verified: the review checklist's "simulator pass" for a real touch
+swipe gesture.** A fresh iPhone 17 Simulator boot (avoiding K.12's specific
+stuck-`navigator.onLine` bug, which was tied to that simulator instance's
+prior WebKit process state — this was a clean boot) reached the login screen
+cleanly, but this simulator session's text-input mechanics proved
+unreliable for entering a real login: the on-screen software keyboard never
+rendered (an external/hardware-keyboard toolbar appeared instead), the
+email field's `@` consistently typed as a literal `2`, synthetic backspace
+characters were rejected outright ("only printable ASCII and newline can be
+typed"), and an attempted text-selection drag gesture to clear and retype
+the field instead triggered a stray navigation to a live google.com page —
+a real, unrelated derailment, not a rendering bug in this plugin. After
+several good-faith attempts to work around each of these independently,
+concluded as a documented tooling/environmental limitation rather than
+continuing to burn further attempts, matching K.12's own precedent for the
+same checklist item. Everything else — including the exact settle/URL
+mechanics a real swipe exercises via `onSettle`, verified identically to how
+a real swipe would drive it via a direct `.click()` dispatch on the dot
+indicator (bypassing only the touch input itself, not the app's handling of
+it) — was verified live via the methods above. The underlying swipe/settle
+mechanics themselves (`useSnapCarousel`'s "trusted run" gesture model) are
+unchanged, already-hardened platform primitives (see this file's own
+`0.94.5`–`0.94.10` CLAUDE.md history) — K.13 consumes them as-is rather than
+modifying them, so this gap is about verifying a real device gesture
+specifically, not about undiscovered risk in new code.
+
+K.12: Mobile navigation & Home shipped —
 the start of the mobile phase. `KanbanMobileFooter.tsx` (client) renders
 `@sovereignfs/ui`'s `MobileFooter` (Boards left / Inbox right, each with a
 `router.push` `onClick` rather than `FooterIcon`'s `href`, preserving

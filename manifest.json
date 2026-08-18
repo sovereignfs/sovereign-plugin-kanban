@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.openfs.kanban",
   "name": "Kanban",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "A minimalist, sovereign alternative to Trello — projects, boards, lists, and cards.",
   "type": "community",
   "runtime": "native",

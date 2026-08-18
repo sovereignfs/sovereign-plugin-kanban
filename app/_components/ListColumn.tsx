@@ -213,7 +213,8 @@ function ListHeader({
   );
 }
 
-function DeleteListConfirm({
+/** Shared with K.13's MobileListSlide — deleting a list has no web/mobile-specific behavior. */
+export function DeleteListConfirm({
   listId,
   listName,
   cardCount,

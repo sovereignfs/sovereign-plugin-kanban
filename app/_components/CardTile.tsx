@@ -33,8 +33,13 @@ function HighlightedTitle({ title, query }: { title: string; query: string }) {
   );
 }
 
-/** The card's visual content — shared between the real (interactive, sortable) tile and the DragOverlay preview. */
-function CardTileBody({ card, query = '' }: { card: BoardCardSummary; query?: string }) {
+/**
+ * The card's visual content — shared between the real (interactive,
+ * sortable) web tile, the DragOverlay preview, and K.13's plain (no
+ * dnd-kit) mobile tile, which isn't inside any DndContext/SortableContext at
+ * all — card reorder on mobile is K.15's long-press gesture, not yet built.
+ */
+export function CardTileBody({ card, query = '' }: { card: BoardCardSummary; query?: string }) {
   const hasMetadata =
     card.checklistTotal > 0 || card.commentCount > 0 || card.dueDate !== null || card.assigneeCount > 0;
 

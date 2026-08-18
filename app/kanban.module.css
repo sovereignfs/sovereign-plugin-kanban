@@ -770,3 +770,94 @@
   width: 28px;
   height: 28px;
 }
+
+/* --- Mobile board view (K.13) ---------------------------------------------- */
+
+.mobileBoardHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  padding: var(--sv-space-3) 0;
+}
+
+.mobileBoardTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* height: 100% doesn't work here — PageContainer's own container box is
+   deliberately height: auto (most pages have naturally tall, page-scrolling
+   content), which breaks percentage-height propagation from .main (which
+   DOES already correctly measure the full 100dvh-minus-header-minus-footer
+   span) down to this div. So this reads --sv-shell-header-height/
+   --sv-shell-footer-height directly instead — both are real px values
+   published on #sv-app-shell (the platform's own header measurement; our
+   MobileFooter's self-measurement, K.12) regardless of PageContainer's own
+   box height, since CSS custom property inheritance doesn't depend on box
+   sizing. A flex column so MobileBoardHeader keeps its natural height and
+   .mobileBoardContent fills what's left (flex: 1 1 auto; min-height: 0).
+   overflow: hidden keeps the outer page from also scrolling — only the
+   carousel's own slide bodies scroll, matching the "one list per screen"
+   carousel model instead of a tall scrolling page. Also subtracts
+   PageContainer's own top padding (--sv-space-4, "md" — boards/[boardId]/
+   page.tsx's <PageContainer maxWidth="full">, unchanged from web): this div
+   renders 16px below the header, not flush against it, so without
+   accounting for that offset too the wrap overshot 16px past the fixed
+   footer's own top edge — caught live via getBoundingClientRect (wrap.bottom
+   799 vs. footer.top 783), not visually obvious in a screenshot. */
+.mobileBoardWrap {
+  height: calc(
+    100dvh - var(--sv-shell-header-height, 69px) - var(--sv-shell-footer-height, 61px) - var(--sv-space-4)
+  );
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobileBoardContent {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobileCarouselWrap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.mobileListHeaderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  min-height: var(--sv-space-8);
+  padding: var(--sv-space-2) var(--sv-space-1);
+}
+
+.mobileListName {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sv-space-2);
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.mobileListCards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+  padding: 0 var(--sv-space-1) var(--sv-space-2);
+}
+
+.mobileAddListSlide {
+  padding: var(--sv-space-4) var(--sv-space-1);
+}
