@@ -7,7 +7,81 @@
 
 ## Status
 
-🚧 In progress — K.1–K.13 complete. K.13: Mobile Board view (carousel & list
+🚧 In progress — K.1–K.14 complete. K.14: Mobile card detail (full-screen)
+shipped. `CardDetailOverlay` now passes `size={isMobile ? 'full' : 'lg'}` to
+`Dialog` — a real distinction only on desktop, since Dialog's own CSS
+already forces every size to a full-screen sheet under 768px width
+(confirmed by reading `Dialog.module.css`'s mobile media query directly);
+`size="full"` is still the semantically correct value to pass for a surface
+that's conceptually always-full-screen, matching the DS's existing lg/full
+convention for overlay-shell plugins. Every field section (Labels, Due
+date, Assignees, Description, Checklist) was already vertically stacked for
+both surfaces — no change needed there. Comments and Activity, previously
+two always-stacked sections, now switch via a new `Tabs`-based
+`CardCommentsActivity` component **on mobile only**; desktop renders both
+stacked exactly as K.6/K.8 built them, unchanged. The tab strip itself is
+handed to the Dialog's mobile `OverlayHeader` second row via
+`useOverlaySecondRow` — the same mechanism Account/Console already use for
+their own tab strips — so it stays pinned above the scrolling content
+instead of scrolling away with it. Both Comments and Activity stay mounted
+at all times on mobile (toggled with a `display: none` CSS class, not
+conditional rendering): unmounting the inactive one on every tab switch
+would discard an in-progress, not-yet-submitted comment draft, undercutting
+the "editing efficiency" CONCEPT.md explicitly calls out for mobile card
+detail. Verified live: typed a draft comment, switched to Activity and
+back, draft was still there.
+
+**Two real findings from live testing, one fixed, one flagged out of
+scope.** (1) Opening any card detail reliably triggered a Next.js
+"Recoverable Error" — a hydration mismatch in `CardActivity.tsx`'s
+`timeAgo(item.createdAt)` rendering (server and client can compute a
+different relative-time bucket, e.g. "2m ago" vs "1m ago", depending on
+real elapsed time between SSR and hydration). This is pre-existing (K.8),
+untouched by K.14, and would affect the desktop modal too — not something
+K.14 introduced or is scoped to fix. Flagged as a separate background task
+rather than fixed inline, per this session's usual practice of not
+absorbing unrelated bugs into an unrelated task's diff. (2) Closing the
+card (both the explicit × button and the browser/device back
+gesture) correctly returns to the list the card was opened from — verified
+the back-button path specifically via real browser history
+(`navigate({url:"back"})`, not just the × button), landing on
+`?list=<id>` with `card` dropped, confirming K.13's `closeHref` mechanism
+composes correctly with a real history-back navigation, not just an
+in-app close click.
+
+**Not fully verified: the review checklist's "quick-entry inputs commit on
+the iOS Done key via blur" item**, and by extension the "simulator pass"
+item — both for the same underlying reason. `useCommitOnEnterOrBlur`'s
+`onBlur` path (the mechanism the checklist is asking about) could not be
+exercised end-to-end in this session's browser preview: the preview tab
+consistently reported `document.visibilityState === "hidden"` (confirmed
+via direct query) regardless of which tab was created or selected, meaning
+neither a real `element.focus()` call nor a `computer`-tool synthesized
+click ever actually moved `document.activeElement` — a background-tab
+browser restriction, not an application bug. The *identical* commit
+path via Enter (`onKeyDown`, which doesn't depend on focus state at all)
+was verified end-to-end with the same value-injection technique — typed a
+new title, dispatched Enter, reloaded the page fresh, and the rename had
+genuinely persisted server-side — giving reasonable confidence the
+underlying `updateCard` plumbing is sound; only the blur-specific trigger
+path itself couldn't be exercised. `useCommitOnEnterOrBlur` is a trivial,
+three-line, unconditional `onBlur: onCommit` pass-through already used
+identically by `CardHeader`'s title input since K.6 and `MobileListSlide`'s
+rename input since K.13 — K.14 didn't touch it or introduce any new commit
+path. A fresh iPhone 17 Simulator boot was attempted for real-device
+verification (which would have real focus/keyboard semantics unlike the
+preview tab), but hit the same login-form text-entry mechanics documented
+in K.13's own status entry (`@` mistyped, no reliable way to clear/retype),
+so a second full troubleshooting pass wasn't repeated — this is the same,
+already-documented environmental limitation carried over from K.12/K.13,
+not new information. Everything else in this task was verified live in the
+browser preview at 390×844: the Comments/Activity tabs, draft preservation
+across tab switches, the Labels popover and due-date `DatePicker` both
+rendering correctly with zero horizontal overflow inside the full-screen
+dialog, and both close paths (button and browser back) returning to the
+correct list.
+
+K.13: Mobile Board view (carousel & list
 menu) shipped — a swipable, one-list-per-screen board using
 `@sovereignfs/ui`'s `SwipableMobileCarousel` compound component
 (`Slide`/`SlideHeader`/`SlideBody`/`SlideFooter` + `Dots`, `density="compact"`

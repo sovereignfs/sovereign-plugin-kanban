@@ -518,6 +518,13 @@
   gap: var(--sv-space-2);
 }
 
+/* K.14 — the inactive Comments/Activity tab on mobile stays mounted (so an
+   in-progress comment draft survives switching tabs) but visually hidden,
+   rather than unmounted via conditional rendering. */
+.tabPanelHidden {
+  display: none;
+}
+
 .labelChipRow,
 .assigneeRow {
   display: flex;

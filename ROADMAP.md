@@ -1,6 +1,6 @@
 # Sovereign Kanban — Roadmap
 
-**Manifest version:** 0.13.0 · **Last updated:** 2026-08-18
+**Manifest version:** 0.14.0 · **Last updated:** 2026-08-18
 
 Chronological build index — one row per PR, platform-`ROADMAP.md` style. Full
 task detail lives in [SPEC.md](SPEC.md); the product concept in
@@ -39,7 +39,7 @@ on the previous row unless noted.
 | ------ | -------------------------------------- | ------ | ---------------------------------------------------------- |
 | 0.12.0 | Mobile navigation & Home               | ✅     | [K.12](SPEC.md#k12--mobile-navigation--home)               |
 | 0.13.0 | Mobile Board view: carousel & list menu | ✅  | [K.13](SPEC.md#k13--mobile-board-view-carousel--list-menu) |
-| 0.14.0 | Mobile card detail (full-screen)       | ⬜     | [K.14](SPEC.md#k14--mobile-card-detail-full-screen)        |
+| 0.14.0 | Mobile card detail (full-screen)       | ✅     | [K.14](SPEC.md#k14--mobile-card-detail-full-screen)        |
 | 0.15.0 | Mobile card reorder & "Move to…"       | ⬜     | [K.15](SPEC.md#k15--mobile-card-reorder--move-to)          |
 
 ## Phase 1d — Release readiness
