@@ -1,6 +1,6 @@
 # Sovereign Kanban — Roadmap
 
-**Manifest version:** 0.15.1 · **Last updated:** 2026-08-18
+**Manifest version:** 1.0.0 · **Last updated:** 2026-08-18
 
 Chronological build index — one row per PR, platform-`ROADMAP.md` style. Full
 task detail lives in [SPEC.md](SPEC.md); the product concept in
@@ -46,7 +46,7 @@ on the previous row unless noted.
 
 | Slot   | Task                                   | Status | Spec task                                              |
 | ------ | -------------------------------------- | ------ | ------------------------------------------------------ |
-| 1.0.0  | Phase 1 hardening & polish pass        | ⬜     | [K.16](SPEC.md#k16--phase-1-hardening--polish-pass)    |
+| 1.0.0  | Phase 1 hardening & polish pass        | ✅     | [K.16](SPEC.md#k16--phase-1-hardening--polish-pass)    |
 
 ## Prioritization rationale
 

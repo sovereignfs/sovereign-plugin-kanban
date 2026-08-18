@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSortable } from '@dnd-kit/sortable';
@@ -96,8 +97,24 @@ export function CardTileBody({ card, query = '' }: { card: BoardCardSummary; que
  * handle (SPEC's web interaction model). A short pointer-activation distance
  * (see `useBoardDndSensors`) is what lets dnd-kit tell a plain click from a
  * drag start, so the `Link` navigation still fires normally on a real click.
+ *
+ * `memo`-wrapped (K.16 performance pass): `ListColumn` rebuilds its `cards`
+ * array via `cardsFor()` on every `BoardView` render, so the ARRAY is never
+ * referentially stable — but the individual `BoardCardSummary` objects
+ * inside it are (`cardById.get(id)` returns the same object from `board.cards`
+ * for any card whose data hasn't changed, reorder or not). React reconciles
+ * `cards.map(c => <CardTile key={c.id} .../>)` per-key regardless of the
+ * array wrapper, so memoizing here still lets an unrelated 195-card reorder
+ * skip re-rendering every untouched tile. See SPEC.md's K.16 status entry
+ * for the measured before/after on a seeded 200-card list.
  */
-export function CardTile({ card, query = '' }: { card: BoardCardSummary; query?: string }) {
+export const CardTile = memo(function CardTile({
+  card,
+  query = '',
+}: {
+  card: BoardCardSummary;
+  query?: string;
+}) {
   const pathname = usePathname();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
@@ -117,7 +134,7 @@ export function CardTile({ card, query = '' }: { card: BoardCardSummary; query?:
       <CardTileBody card={card} query={query} />
     </Link>
   );
-}
+});
 
 /** Static (non-interactive) rendering for `DragOverlay` — the floating copy that follows the cursor. */
 export function CardDragPreview({ card }: { card: BoardCardSummary }) {
@@ -142,8 +159,20 @@ export function CardDragPreview({ card }: { card: BoardCardSummary }) {
  * automatically, so this component itself doesn't need to know which. See
  * `.mobileCardTile` in kanban.module.css for why this does NOT reuse
  * CardTile's own `touch-action: none`.
+ *
+ * `memo`-wrapped for the same reason as `CardTile` above — `href` is a
+ * freshly-computed string each render (`cardHrefFor` is a new closure every
+ * `MobileListSlide` render), but string props compare by value, not
+ * reference, so an unchanged `href` still counts as equal for `memo`'s
+ * default shallow comparison.
  */
-export function MobileCardTile({ card, href }: { card: BoardCardSummary; href: string }) {
+export const MobileCardTile = memo(function MobileCardTile({
+  card,
+  href,
+}: {
+  card: BoardCardSummary;
+  href: string;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
   });
@@ -161,4 +190,4 @@ export function MobileCardTile({ card, href }: { card: BoardCardSummary; href: s
       <CardTileBody card={card} />
     </Link>
   );
-}
+});

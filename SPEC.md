@@ -7,8 +7,86 @@
 
 ## Status
 
-🚧 In progress — K.1–K.15 complete (`0.15.1` hotfix on top of K.15's own
-`0.15.0`; see below). `0.15.0` → `0.15.1` fixes a real hydration mismatch
+✅ Phase 1 complete — K.1–K.16 shipped, manifest at `1.0.0`.
+
+K.16: Phase 1 hardening & polish pass
+closed the gaps a feature-by-feature build leaves, rather than adding new
+surface area. Four areas, each verified live rather than assumed from
+reading the code:
+
+**Loading/empty/error audit.** Walked every route's `loading.tsx` against
+the platform's "states not pages" convention and found one real gap:
+`/kanban/inbox` had no dedicated skeleton, silently falling back to the root
+layout's "Loading boards" spinner label — wrong copy for that surface. Added
+`app/inbox/loading.tsx`, matching the existing `PageContainer` + `Spinner`
+pattern already used by `app/loading.tsx` and `app/boards/[boardId]/loading.tsx`.
+`error.tsx` and the board-data query layer (`getBoardData`'s `Promise.all` +
+`inArray` batching, no N+1) were both already correct on inspection — no
+change needed there.
+
+**Toast-coverage audit.** Cross-checked every `ActionResult`-returning
+mutation's call site against the DS convention that a failed action must
+surface via `toast.show({ category: 'error' })` or an inline error, using
+`CardChecklist.tsx`'s already-correct `ChecklistComposer` (`onError(result.error)`
+on failure) as the reference. Found two real, silent-failure outliers:
+`AddListSlot.tsx` and `QuickAddCard.tsx` both awaited their `createList`/
+`createCard` action and did nothing on `!result.ok` — a failed "Add list" or
+"Add card" just silently closed the composer with no feedback, the exact
+failure mode the platform's error-UX convention exists to prevent. Fixed
+both to call `toast.show({ title, message: result.error, category: 'error' })`
+before closing, matching every other mutation in the plugin.
+
+**A11y pass.** Keyboard drag-and-drop reorder was verified end-to-end via
+real `KeyboardEvent` dispatch (`Space` → lift, `ArrowDown` → move,
+`Space` → drop) rather than just trusting `useSortable`'s built-in
+`KeyboardSensor`: confirmed the correct `aria-live` announcements at each
+step ("was moved over droppable area …"), the resulting DOM reorder, and a
+real `POST` to the board's server-action endpoint confirming the move
+persisted, not just a local optimistic update. Overlay focus management
+(focus capture on open, restore on close, Tab-cycle trap, Escape-to-close)
+was verified by reading `@sovereignfs/ui`'s shared `useOverlayFocusCapture`/
+`useOverlayKeyboardTrap` (`overlay-shell.ts`) directly rather than via live
+DOM testing — this session's browser automation environment had
+`document.hasFocus()` return `false` throughout, a known limitation (real
+`document.activeElement` changes still work via `.focus()`, but native
+window-focus-dependent behavior can't be trusted from here), so code review
+was the honest way to close this item. Every dialog surface in the plugin
+(`CardDetailOverlay`, `MoveCardDialog`, `BoardShareDialog`,
+`BoardSettingsDialog`, `HomeDialogs`, `form-dialog.tsx`) goes through the DS
+`Dialog`, which wires both hooks internally — no plugin-local focus-trap
+code exists to independently get wrong.
+
+**Performance sanity on a large board.** Seeded a real 200-card list
+directly into the dev sqld database (bypassing the app layer, via
+`@libsql/client` against the `plugin_io_openfs_kanban` namespace) rather
+than estimating. Payload: `transferSize` ~58KB / `decodedBodySize` ~329KB,
+`domContentLoadedEventEnd` ~7.2s in dev mode (not representative of a
+production build). Filter latency: effectively instant — verified via exact
+match-count assertions while typing, not just eyeballing. Drag
+responsiveness was the one real finding: dragging a card on the 200-card
+board took ~1850–1860ms end-to-end (consistent across two runs) before any
+fix, traced to `ListColumn` rebuilding its `cards` array by reference on
+every `BoardView` render, cascading a re-render to every `CardTile` in the
+list on every drag frame. Wrapped `CardTile` and `MobileCardTile` in
+`React.memo` — safe because `cardById.get(id)` returns the same card object
+across a reorder even though the containing array isn't referentially
+stable, so per-key reconciliation still lets `memo`'s shallow-prop
+comparison skip untouched tiles. Measured ~1520–1527ms after (consistent
+across two runs), a real but modest ~18% improvement, not the dramatic fix
+initially hoped for: `useSortable()` subscribes to dnd-kit's shared
+drag-state context internally, so every sortable item still re-renders via
+its *own* hook subscription on each drag frame regardless of `memo` on its
+wrapper — `memo` only blocks parent-triggered re-renders, not this class.
+The remaining ~1.5s at 200 cards (dev mode) is a known dnd-kit
+characteristic at scale; closing it fully would mean list virtualization, a
+change disproportionate to a hardening pass — documented here as a
+deliberate scope boundary, not silently dropped. Test data and scratch
+seeding scripts were removed after measurement; none of this is committed.
+
+Also added the plugin [`README.md`](README.md) (features, permissions with
+rationale, local dev setup) — the fourth K.16 deliverable, no bugs involved.
+
+`0.15.0` → `0.15.1` fixes a real hydration mismatch
 found live while testing K.14, reported directly rather than re-discovered:
 `CardActivity.tsx` (and, on inspection, `CardComments.tsx` and
 `InboxFeedList.tsx` too) called `timeAgo()` (`_lib/time.ts`) straight from

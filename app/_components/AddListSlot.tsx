@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, type KeyboardEvent } from 'react';
-import { Button, Input } from '@sovereignfs/ui';
+import { Button, Input, useToast } from '@sovereignfs/ui';
 import { createList } from '../actions';
 import styles from '../kanban.module.css';
 
@@ -23,6 +23,7 @@ export function AddListSlot({
   boardId: string;
   variant: 'inline' | 'empty';
 }) {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
   const [pending, startTransition] = useTransition();
@@ -36,8 +37,12 @@ export function AddListSlot({
     }
     startTransition(async () => {
       const result = await createList({ boardId, name });
-      if (result.ok) setValue('');
-      else setOpen(false);
+      if (result.ok) {
+        setValue('');
+      } else {
+        toast.show({ title: 'Couldn’t add list', message: result.error, category: 'error' });
+        setOpen(false);
+      }
     });
   }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, type KeyboardEvent } from 'react';
-import { Button, Input } from '@sovereignfs/ui';
+import { Button, Input, useToast } from '@sovereignfs/ui';
 import { createCard } from '../actions';
 import styles from '../kanban.module.css';
 
@@ -19,6 +19,7 @@ export function QuickAddCard({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const toast = useToast();
   const [value, setValue] = useState('');
   const [pending, startTransition] = useTransition();
 
@@ -31,8 +32,12 @@ export function QuickAddCard({
     }
     startTransition(async () => {
       const result = await createCard({ listId, title });
-      if (result.ok) setValue('');
-      else onOpenChange(false);
+      if (result.ok) {
+        setValue('');
+      } else {
+        toast.show({ title: 'Couldn’t add card', message: result.error, category: 'error' });
+        onOpenChange(false);
+      }
     });
   }
 
