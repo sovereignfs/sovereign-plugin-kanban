@@ -1,10 +1,10 @@
 import { sdk } from '@sovereignfs/sdk';
 import { PageContainer, PageHeader } from '@sovereignfs/ui';
-import { InboxFeedList } from '../_components/InboxFeedList';
-import { InboxSeenMarker } from '../_components/InboxSeenMarker';
-import { requireUser } from '../_lib/authz';
-import { getDb } from '../_lib/db';
-import { getInboxFeed } from '../_lib/queries';
+import { InboxFeedList } from '../../_components/InboxFeedList';
+import { InboxSeenMarker } from '../../_components/InboxSeenMarker';
+import { requireUser } from '../../_lib/authz';
+import { getDb } from '../../_lib/db';
+import { getInboxFeed } from '../../_lib/queries';
 
 /**
  * K.11 Inbox — activity across every board the user belongs to

@@ -7,7 +7,39 @@
 
 ## Status
 
-✅ Phase 1 complete — K.1–K.16 shipped, manifest at `1.0.0`.
+✅ Phase 1 complete — K.1–K.16 shipped, manifest at `2.0.0`.
+
+`1.0.0` → `2.0.0` re-identifies the plugin as first-party rather than
+community, and moves it to the chrome-free minimal shell — a deliberate
+identity change, not a bug fix, hence the major bump (breaking: the id
+change alone moves the plugin's isolated DB namespace from
+`plugin_io_openfs_kanban` to `plugin_fs_sovereign_kanban`, orphaning any
+existing local dev data under the old namespace). Three manifest fields
+changed together: `id: "io.openfs.kanban"` → `"fs.sovereign.kanban"` (matches
+the `fs.sovereign.*` convention already used by `sovereign-tasks`/`shopper`),
+`type: "community"` → `"sovereign"` (first-party, project-maintained — see
+`docs/plugin-development.md`'s `type` reference), and `shell: "default"` →
+`"minimal"` (chrome-free, full-bleed). The `shellConfig: { mobileFooter: false }`
+field was removed outright rather than emptied — `shellConfig.mobileHeader`/
+`mobileFooter` are only valid under `shell: "default"` and fail manifest
+validation otherwise (`packages/manifest/src/schema.ts`'s `.refine` checks).
+
+The shell change is less disruptive than a bare reading of "no sidebar, no
+header, no footer" suggests: this plugin already self-renders its own
+complete navigation chrome (`KanbanLayout` → `KanbanSidebar` + K.12's
+`KanbanMobileFooter`), the RFC 0075 self-rendered-chrome pattern —
+`shell: minimal` only removes the platform's own, now-redundant icon
+rail/header wrapping around it. One real gap this exposed and fixed:
+desktop's `KanbanSidebar` had no way back to Launcher or any other installed
+plugin once the platform's icon rail is gone — mobile already covered this
+via `KanbanMobileFooter`'s real `MobileAppsDrawer` (K.12), but the desktop
+sidebar had never needed an equivalent since the platform chrome was always
+there alongside it. Fixed by adding a plain `Link href="/launcher"` at the
+top of `KanbanSidebar`, matching the documented minimal-shell nav convention
+(`example-plugins/example-minimal/app/page.tsx`'s own bare Launcher link) —
+deliberately not a full desktop apps-switcher drawer, which would be
+over-engineering relative to the platform's own established precedent for
+this exact situation.
 
 K.16: Phase 1 hardening & polish pass
 closed the gaps a feature-by-feature build leaves, rather than adding new
@@ -980,15 +1012,21 @@ two-column layout).
 
 ### Plugin identity
 
-- **id:** `io.openfs.kanban` (reverse-DNS per platform convention; table
+- **id:** `fs.sovereign.kanban` (reverse-DNS per platform convention; table
   slug prefix stays `kanban_`)
 - **routePrefix:** `/kanban`
-- **type:** community (externally-maintained `.local` plugin during
-  development; the manifest schema requires a `repository` URL for this
-  type)
-- **shell:** `default` (platform chrome), with
-  `shellConfig: { mobileHeader: true, mobileFooter: false }` — platform header
-  stays, plugin renders its own mobile footer (RFC 0075).
+- **type:** sovereign (first-party plugin maintained by the project,
+  installed from its own repo; the manifest schema requires a `repository`
+  URL for this type)
+- **shell:** `minimal` (chrome-free, full-bleed — docs/plugin-development.md).
+  No `shellConfig` — its fields are only valid under `shell: default`. The
+  plugin already self-renders 100% of its own navigation chrome (this file's
+  K.16 status entry's `KanbanSidebar`/`KanbanMobileFooter`), so `minimal`
+  removes the now-redundant platform icon rail/header rather than the plugin
+  losing anything it relied on the platform for. `KanbanSidebar` gained a
+  plain Launcher link (the documented minimal-shell nav convention,
+  `example-minimal/app/page.tsx`) so desktop users still have a way back —
+  mobile already had one via `KanbanMobileFooter`'s Apps drawer.
 - **Versioning:** the plugin's version lives **only in `manifest.json`**;
   `package.json` stays pinned at `0.0.0` forever (platform convention).
 

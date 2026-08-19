@@ -9,7 +9,8 @@ import {
   ConfirmDialog,
   Icon,
   Input,
-  Menu,
+  MenuEntries,
+  Popover,
   Typography,
   useCommitOnEnterOrBlur,
   useToast,
@@ -185,8 +186,35 @@ function ListHeader({
       </button>
       <Typography variant="caption">{cardCount}</Typography>
       <span className={styles.listHeaderSpacer} />
-      <span data-no-dnd>
-        <Menu
+      <span className={styles.listOptionsMenu} data-no-dnd>
+        {/* `Popover` + `MenuEntries` directly, not the shared `Menu`
+            component — `Menu`'s desktop path is `Popover` at a fixed 288px
+            width with no way to override it, which read oversized next to
+            this 272px-wide list (nearly as wide as the whole column).
+            `Menu`'s own mobile fallback (a bottom-sheet `Drawer`) isn't
+            needed here either — `ListColumn` only ever renders on desktop;
+            mobile boards use `MobileListSlide`'s own menu instead.
+
+            `align="right"` — the trigger sits at the list's own right edge,
+            so this keeps the panel's own right edge there too, meaning the
+            whole panel (190px, comfortably under this 272px list's own
+            width) stays within this list's bounds rather than spilling into
+            the next one over. An earlier pass tried `align="left"` instead
+            to avoid the panel covering this list's own cards, but that's
+            the wrong tradeoff — overlapping this list's own cards while
+            opening a menu *for this list* reads as normal (Trello does the
+            same); bleeding into an unrelated neighboring list does not.
+            `panelStyle`'s `right` offset gives the panel a bit of its own
+            breathing room from the list's own right edge rather than
+            sitting flush against it (caught live: with no offset, the panel
+            visually touched the list's own card-boundary edge). */}
+        <Popover
+          align="right"
+          width={190}
+          panelStyle={{ right: 'var(--sv-space-2)' }}
+          open={menuOpen}
+          onClose={onMenuClose}
+          aria-label={`${list.name} options`}
           trigger={
             <Button
               variant="ghost"
@@ -197,17 +225,20 @@ function ListHeader({
               <Icon name="ellipsis-vertical" size="sm" aria-hidden={true} />
             </Button>
           }
-          open={menuOpen}
-          onClose={onMenuClose}
-          align="right"
-          aria-label={`${list.name} options`}
-          items={[
-            { label: 'Add card', icon: 'plus', onSelect: onAddCard },
-            { label: 'Rename list', icon: 'pencil', onSelect: onStartRename },
-            { type: 'separator' },
-            { label: 'Delete list', icon: 'trash-2', destructive: true, onSelect: onDelete },
-          ]}
-        />
+        >
+          <MenuEntries
+            items={[
+              { label: 'Add card', icon: 'plus', onSelect: onAddCard },
+              { label: 'Rename list', icon: 'pencil', onSelect: onStartRename },
+              { type: 'separator' },
+              { label: 'Delete list', icon: 'trash-2', destructive: true, onSelect: onDelete },
+            ]}
+            onSelect={(entry) => {
+              onMenuClose();
+              entry.onSelect();
+            }}
+          />
+        </Popover>
       </span>
     </div>
   );

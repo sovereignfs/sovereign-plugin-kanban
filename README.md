@@ -3,7 +3,7 @@
 A minimalist, sovereign alternative to Trello — projects, boards, lists, and
 cards — built as an installable plugin for the
 [Sovereign](https://github.com/sovereignfs/sovereignfs) platform
-(`io.openfs.kanban`).
+(`fs.sovereign.kanban`).
 
 ## Features
 
@@ -35,7 +35,7 @@ Declared in [`manifest.json`](manifest.json):
 | Permission           | Why                                                                                          |
 | --------------------- | --------------------------------------------------------------------------------------------- |
 | `auth:session`        | Every board/card action is scoped to the signed-in user (membership checks, activity authorship, assignee lookups). |
-| `db:readWrite`        | Own isolated database (`plugin_io_openfs_kanban`) for projects, boards, lists, cards, comments, and activity. |
+| `db:readWrite`        | Own isolated database (`plugin_fs_sovereign_kanban`) for projects, boards, lists, cards, comments, and activity. |
 | `notifications:send`  | Delivers Inbox notifications for comments, mentions, and due-date activity to board members. |
 
 ## Running it locally
@@ -58,6 +58,22 @@ hot-reloads on changes. Visit `/kanban` on your dev instance.
 pnpm --filter sovereign-plugin-kanban typecheck
 pnpm lint / pnpm format:check / pnpm design:tokens:check   # repo-wide, not per-plugin
 pnpm exec vitest run plugins/sovereign-plugin-kanban.local
+```
+
+### Sample data
+
+`scripts/seed.ts` fills the dev database with realistic sample data covering
+every card/board scenario (owned and shared projects, boards with varying
+member/label/list counts, cards spanning every combination of due date,
+labels, checklist progress, assignees, and comment threads) — useful for
+manually exercising the UI without building up state by hand. Requires
+`pnpm sv seed` (monorepo root) to have run at least once, since it assigns
+cards to and shares boards with that command's four well-known dev accounts.
+Idempotent; pass `--reset` to wipe and recreate:
+
+```bash
+pnpm exec tsx scripts/seed.ts           # from this plugin's own directory
+pnpm exec tsx scripts/seed.ts --reset
 ```
 
 See this plugin's own [`CLAUDE.md`](CLAUDE.md) for the full development

@@ -18,7 +18,8 @@ import {
   EmptyState,
   Icon,
   Menu,
-  PageHeader,
+  MenuEntries,
+  Popover,
   Typography,
   useIsMobile,
   useToast,
@@ -79,6 +80,7 @@ export function BoardView({
   const isMobile = useIsMobile();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [boardMenuOpen, setBoardMenuOpen] = useState(false);
   const [activeDrag, setActiveDrag] = useState<ActiveDrag>(null);
   const [filterQuery, setFilterQuery] = useState('');
   const [, startTransition] = useTransition();
@@ -219,24 +221,78 @@ export function BoardView({
         </div>
       ) : (
         <>
-          <PageHeader
-            title={board.name}
-            headingLevel={1}
-            action={
-              <div className={styles.boardHeaderActions}>
-                <BoardSearchField value={filterQuery} onChange={setFilterQuery} />
-                <MemberAvatarStack members={board.members} currentUser={currentUser} />
-                <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)}>
-                  Share
-                </Button>
-                {board.role === 'owner' && (
-                  <Button variant="secondary" size="sm" onClick={() => setSettingsOpen(true)}>
-                    Settings
-                  </Button>
-                )}
-              </div>
-            }
-          />
+          {/* Board View's own "secondary header" toolbar (Trello-style: board
+              name + search/members/share in their own compact bar above the
+              colored canvas) — deliberately not the shared `PageHeader` DS
+              component here, since this needs a smaller title than
+              `PageHeader`'s own fixed size (no title-specific className to
+              override it from outside) plus a three-part layout (title,
+              centered search, actions) `PageHeader` doesn't support. Always
+              a plain neutral surface, same as the primary header above it —
+              only the canvas behind the list columns (`.body`) takes the
+              board's own color; see `.boardToolbar`'s own comment. */}
+          <div className={styles.boardToolbar}>
+            <Typography variant="h1" as="h1" className={styles.boardTitle}>
+              {board.name}
+            </Typography>
+            <div className={styles.boardToolbarCenter}>
+              <BoardSearchField value={filterQuery} onChange={setFilterQuery} />
+            </div>
+            <div className={styles.boardHeaderActions}>
+              <MemberAvatarStack members={board.members} currentUser={currentUser} />
+              <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)}>
+                <Icon name="user-round-plus" size="sm" aria-hidden={true} />
+                Share
+              </Button>
+              {/* Same ellipsis-vertical trigger styling as `MobileBoardHeader`
+                  below and `ListColumn`'s own list-options trigger — `ghost`,
+                  not `secondary` like Share, so it reads as a plain icon
+                  affordance rather than a second bordered button competing
+                  with it. Owner-only since Settings is currently its only
+                  item; add non-owner items here too if that ever changes.
+                  `Popover` + `MenuEntries` directly, not the shared `Menu`
+                  (used for the same purpose on mobile below) — `Menu`'s
+                  desktop path is a fixed 288px-wide `Popover` with no way to
+                  override it, which read oversized for a single "Settings"
+                  item and, at `align="right"`, left the panel's own right
+                  edge just a few px from the browser's own edge (it inherits
+                  the trigger's position, itself deliberately close to the
+                  window edge to line up with the account avatar above —
+                  see `.boardOptionsMenu`'s own comment). `panelStyle`'s
+                  `right` offset pulls the *panel* further from the window
+                  edge without moving the trigger itself. */}
+              {board.role === 'owner' && (
+                <span className={styles.boardOptionsMenu}>
+                  <Popover
+                    align="right"
+                    width={170}
+                    panelStyle={{ right: 'var(--sv-space-4)' }}
+                    open={boardMenuOpen}
+                    onClose={() => setBoardMenuOpen(false)}
+                    aria-label="Board options"
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Board options"
+                        onClick={() => setBoardMenuOpen((v) => !v)}
+                      >
+                        <Icon name="ellipsis-vertical" size="sm" aria-hidden={true} />
+                      </Button>
+                    }
+                  >
+                    <MenuEntries
+                      items={[{ label: 'Settings', icon: 'settings', onSelect: () => setSettingsOpen(true) }]}
+                      onSelect={(entry) => {
+                        setBoardMenuOpen(false);
+                        entry.onSelect();
+                      }}
+                    />
+                  </Popover>
+                </span>
+              )}
+            </div>
+          </div>
 
           {board.lists.length === 0 ? <EmptyBoard boardId={board.id} /> : null}
         </>
@@ -369,7 +425,7 @@ function MemberAvatarStack({
           key={member.userId}
           name={displayName(member.userId, currentUser, members)}
           size="sm"
-          className={styles.stackedAvatar}
+          className={`${styles.memberAvatar} ${styles.stackedAvatar}`}
         />
       ))}
       {overflow > 0 && <span className={styles.stackedAvatarOverflow}>+{overflow}</span>}

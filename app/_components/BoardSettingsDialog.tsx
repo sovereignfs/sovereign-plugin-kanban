@@ -1,9 +1,9 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { Dialog, FormField, Input, Typography } from '@sovereignfs/ui';
+import { Dialog, FormField, Icon, Input, Typography } from '@sovereignfs/ui';
 import { updateBoardForm } from '../actions';
-import { BOARD_COLORS } from '../_lib/palette';
+import { BOARD_COLOR_NONE, BOARD_COLORS } from '../_lib/palette';
 import type { BoardData } from '../_lib/queries';
 import styles from '../kanban.module.css';
 import { DialogActions, useCloseOnSuccess } from './form-dialog';
@@ -33,6 +33,24 @@ export function BoardSettingsDialog({
         <FormField label="Color">
           {() => (
             <div className={styles.swatchRow} role="radiogroup" aria-label="Board color">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={color === BOARD_COLOR_NONE}
+                aria-label="No color"
+                title="No color"
+                disabled={pending}
+                className={[
+                  styles.swatch,
+                  styles.swatchNone,
+                  color === BOARD_COLOR_NONE ? styles.swatchSelected : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => setColor(BOARD_COLOR_NONE)}
+              >
+                <Icon name="x" size="sm" aria-hidden={true} />
+              </button>
               {BOARD_COLORS.map((c) => (
                 <button
                   key={c.id}

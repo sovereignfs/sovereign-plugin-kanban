@@ -4,6 +4,7 @@ import { PageContainer } from '@sovereignfs/ui';
 import { BoardView } from '../../_components/BoardView';
 import { requireUser } from '../../_lib/authz';
 import { getDb } from '../../_lib/db';
+import { resolveBoardColor } from '../../_lib/palette';
 import { getBoardData, getCardDetail } from '../../_lib/queries';
 
 /**
@@ -37,10 +38,31 @@ export default async function BoardPage({
   const currentUser = { id: actor.userId, name: session?.user.name ?? null };
 
   const cardDetail = cardId ? await getCardDetail(db, cardId, actor) : null;
+  const resolvedColor = resolveBoardColor(board.color);
 
   return (
-    <PageContainer maxWidth="full">
-      <BoardView board={board} cardDetail={cardDetail} currentUser={currentUser} />
-    </PageContainer>
+    <>
+      {/* Sets --kanban-board-color, read only by kanban.module.css's `.body`
+          (the canvas behind the list columns) — both headers stay a plain
+          neutral surface regardless of board color; the color is only ever
+          a background for the lists area. Set globally via :root regardless
+          of where this <style> tag physically sits in the DOM — no client
+          JS/flash-of-neutral needed, and it's automatically removed (every
+          property reverts to its fallback) when navigating away from this
+          page, since React unmounts it along with the rest of this page's
+          output. Board colors are a fixed, curated palette (never
+          user-authored text), so this interpolation is safe. Deliberately
+          the literal board hex, not a semantic token — this canvas color
+          stays constant across light/dark theme; only card/list surfaces
+          sitting on top of it adapt. */}
+      {resolvedColor && (
+        <style>{`:root {
+          --kanban-board-color: ${resolvedColor.value};
+        }`}</style>
+      )}
+      <PageContainer maxWidth="full">
+        <BoardView board={board} cardDetail={cardDetail} currentUser={currentUser} />
+      </PageContainer>
+    </>
   );
 }

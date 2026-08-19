@@ -1,44 +1,58 @@
 import type { ReactNode } from 'react';
 import { sdk } from '@sovereignfs/sdk';
+import { KanbanHeader } from './_components/KanbanHeader';
 import { KanbanMobileFooter, type MobileAppEntry } from './_components/KanbanMobileFooter';
-import { KanbanSidebar } from './_components/KanbanSidebar';
 import { requireUser } from './_lib/authz';
 import { getDb } from './_lib/db';
 import { hasUnseenInboxActivity } from './_lib/queries';
 import styles from './kanban.module.css';
 
 /**
- * Plugin shell: secondary sidebar (web) + a self-rendered mobile footer
- * (K.12, `shellConfig.mobileFooter: false`) — never both. Pages own their
- * PageContainer, this layout adds no gutter of its own.
+ * Plugin shell for every page: a top header (web) + a self-rendered mobile
+ * footer (K.12, `shellConfig.mobileFooter: false` in the pre-minimal-shell
+ * manifest — now implicit under `shell: minimal`, which gives no chrome at
+ * all). Pages own their PageContainer, this layout adds no gutter of its
+ * own.
  *
- * The sidebar keeps its original pure-CSS `@media` hide-on-mobile (no
- * change here) rather than moving to `useIsMobile` too: it already has zero
- * hydration-flash risk (the stylesheet applies before any JS runs), and
- * `useIsMobile`/`ResponsiveSurface` default to the *web* value until the
- * client mounts (documented, SSR-safe-not-flash-free behavior) — switching
- * the already-flash-free sidebar to that mechanism would be a regression
- * for no benefit. `useIsMobile` (inside `KanbanMobileFooter`, per SPEC's
- * named mechanism) is used for the *footer* specifically, since unlike a
- * pure CSS hide it avoids ever measuring/publishing shell-chrome height
- * from `MobileFooter` on desktop at all. `<ResponsiveSurface>` itself can't
- * be used directly here — it has no `'use client'` of its own (by design;
- * every real consumer in this repo renders it from inside an
- * already-client component, never straight from a Server Component's JSX),
- * so `KanbanMobileFooter` decides internally via `useIsMobile` instead of
- * this layout wrapping it in `<ResponsiveSurface>`.
+ * The secondary sidebar (Boards/Inbox nav) is deliberately NOT rendered
+ * here — it's scoped to the Home/Inbox routes only via their own
+ * `(home)/layout.tsx`, so Board View gets the header but no sidebar.
  *
- * K.11: the sidebar's Inbox unseen badge (also read by the mobile footer)
- * is computed here — a layout runs on every navigation within the plugin,
- * not just visits to `/kanban/inbox` — so it stays current without either
- * client component needing its own fetch.
+ * The header keeps a pure-CSS `@media` hide-on-mobile (matching the
+ * sidebar's own prior convention) rather than `useIsMobile`: zero
+ * hydration-flash risk, and mobile has no header yet (footer-only chrome
+ * stays as-is for now). `useIsMobile` (inside `KanbanMobileFooter`) is used
+ * for the *footer* specifically, since unlike a pure CSS hide it avoids
+ * ever measuring/publishing shell-chrome height from `MobileFooter` on
+ * desktop at all. `<ResponsiveSurface>` itself can't be used directly here
+ * — it has no `'use client'` of its own (by design; every real consumer in
+ * this repo renders it from inside an already-client component, never
+ * straight from a Server Component's JSX), so `KanbanMobileFooter` decides
+ * internally via `useIsMobile` instead of this layout wrapping it.
+ *
+ * K.11: the mobile footer's Inbox unseen badge is computed here — a layout
+ * runs on every navigation within the plugin, not just visits to
+ * `/kanban/inbox` — so it stays current without the client component
+ * needing its own fetch. The sidebar's own copy of this same badge is
+ * fetched independently by `(home)/layout.tsx` (cheap query, avoids
+ * threading data across sibling layouts).
  */
 export default async function KanbanLayout({ children }: { children: ReactNode }) {
   const actor = await requireUser();
   const db = await getDb();
-  const [hasUnseenInbox, availablePlugins] = await Promise.all([
+  const [hasUnseenInbox, availablePlugins, session, instanceName] = await Promise.all([
     hasUnseenInboxActivity(db, actor),
     sdk.plugins.list(),
+    sdk.auth.getSession(),
+    // Best-effort: the header's brand badge is a cosmetic detail, not core
+    // functionality, so a platform-config read failure (e.g. an
+    // unseeded/legacy `instance_id` setting row on an older instance)
+    // shouldn't take down the whole plugin — fall back to a sensible
+    // default name instead of letting the layout throw.
+    sdk.platform
+      .getConfig()
+      .then((config) => config.instanceName)
+      .catch(() => 'Sovereign'),
   ]);
 
   // Plain serializable data across the client boundary — never JSX (see
@@ -55,8 +69,15 @@ export default async function KanbanLayout({ children }: { children: ReactNode }
 
   return (
     <div className={styles.shell}>
-      <KanbanSidebar hasUnseenInbox={hasUnseenInbox} />
-      <div className={styles.main}>{children}</div>
+      <KanbanHeader
+        user={{
+          name: session?.user.name ?? null,
+          email: session?.user.email ?? '',
+          image: session?.user.image ?? null,
+        }}
+        instanceName={instanceName}
+      />
+      <div className={styles.body}>{children}</div>
       <KanbanMobileFooter apps={apps} hasUnseenInbox={hasUnseenInbox} />
     </div>
   );

@@ -1,8 +1,8 @@
 import { PageContainer } from '@sovereignfs/ui';
-import { HomeView } from './_components/HomeView';
-import { requireUser } from './_lib/authz';
-import { getDb } from './_lib/db';
-import { getHomeData } from './_lib/queries';
+import { HomeView } from '../_components/HomeView';
+import { requireUser } from '../_lib/authz';
+import { getDb } from '../_lib/db';
+import { getHomeData } from '../_lib/queries';
 
 export default async function KanbanHomePage() {
   const actor = await requireUser();

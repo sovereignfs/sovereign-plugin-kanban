@@ -24,7 +24,7 @@ import {
 } from './_db/position';
 import * as schema from './_db/schema';
 import { fail, ok, type ActionResult } from './_lib/action-result';
-import { isBoardColor } from './_lib/palette';
+import { isBoardColor, isBoardColorOrNone } from './_lib/palette';
 import { recordActivity } from './_lib/activity';
 import {
   getBoardRole,
@@ -1126,7 +1126,7 @@ export async function createBoardForm(
   formData: FormData,
 ): Promise<ActionResult> {
   const color = String(formData.get('color') ?? '');
-  if (!isBoardColor(color)) return fail('Pick a color for the board.');
+  if (!isBoardColorOrNone(color)) return fail('Pick a color for the board.');
   return createBoard({
     projectId: String(formData.get('projectId') ?? ''),
     name: String(formData.get('name') ?? ''),
@@ -1139,7 +1139,7 @@ export async function updateBoardForm(
   formData: FormData,
 ): Promise<ActionResult> {
   const color = String(formData.get('color') ?? '');
-  if (!isBoardColor(color)) return fail('Pick a color for the board.');
+  if (!isBoardColorOrNone(color)) return fail('Pick a color for the board.');
   return updateBoard({
     boardId: String(formData.get('boardId') ?? ''),
     name: String(formData.get('name') ?? ''),

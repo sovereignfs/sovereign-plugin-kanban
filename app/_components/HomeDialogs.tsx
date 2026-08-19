@@ -1,9 +1,14 @@
 'use client';
 
-import { useActionState, useState } from 'react';
-import { Dialog, FormField, Input, Textarea, Typography } from '@sovereignfs/ui';
-import { createBoardForm, createProjectForm, updateProjectForm } from '../actions';
-import { BOARD_COLORS, DEFAULT_BOARD_COLOR } from '../_lib/palette';
+import { useActionState, useState, useTransition } from 'react';
+import { ConfirmDialog, Dialog, FormField, Icon, Input, Textarea, Typography } from '@sovereignfs/ui';
+import {
+  createBoardForm,
+  createProjectForm,
+  deleteProject,
+  updateProjectForm,
+} from '../actions';
+import { BOARD_COLOR_NONE, BOARD_COLORS, DEFAULT_BOARD_COLOR } from '../_lib/palette';
 import type { HomeProject } from '../_lib/queries';
 import styles from '../kanban.module.css';
 import { DialogActions, useCloseOnSuccess } from './form-dialog';
@@ -120,6 +125,24 @@ export function NewBoardDialog({
         <FormField label="Color">
           {() => (
             <div className={styles.swatchRow} role="radiogroup" aria-label="Board color">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={color === BOARD_COLOR_NONE}
+                aria-label="No color"
+                title="No color"
+                disabled={pending}
+                className={[
+                  styles.swatch,
+                  styles.swatchNone,
+                  color === BOARD_COLOR_NONE ? styles.swatchSelected : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => setColor(BOARD_COLOR_NONE)}
+              >
+                <Icon name="x" size="sm" aria-hidden={true} />
+              </button>
               {BOARD_COLORS.map((c) => (
                 <button
                   key={c.id}
@@ -148,5 +171,46 @@ export function NewBoardDialog({
         />
       </form>
     </Dialog>
+  );
+}
+
+export function DeleteProjectConfirm({
+  project,
+  onClose,
+}: {
+  project: HomeProject;
+  onClose: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const boardCount = project.boards.length;
+
+  return (
+    <ConfirmDialog
+      open
+      onClose={onClose}
+      title={`Delete "${project.name}"?`}
+      message={
+        <>
+          This deletes the project{' '}
+          {boardCount > 0
+            ? `and its ${boardCount === 1 ? 'board' : `${boardCount} boards`}, including every list, card, and comment on them. `
+            : 'permanently. '}
+          This can&apos;t be undone.
+        </>
+      }
+      destructive
+      confirmLabel={pending ? 'Deleting…' : 'Delete project'}
+      pending={pending}
+      error={error}
+      onConfirm={() => {
+        setError(null);
+        startTransition(async () => {
+          const result = await deleteProject({ projectId: project.id });
+          if (result.ok) onClose();
+          else setError(result.error);
+        });
+      }}
+    />
   );
 }

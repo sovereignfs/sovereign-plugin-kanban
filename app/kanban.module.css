@@ -4,8 +4,297 @@
 
 .shell {
   display: flex;
-  min-height: 100%;
+  flex-direction: column;
+  /* `100dvh`, not `100%` — the `(minimal)` route group's own `.root`
+     wrapper (runtime/app/(minimal)/minimal.module.css) sets `min-height:
+     100dvh` on itself but never a definite `height`, so a percentage height
+     here can't resolve against it and silently computes to `auto`: `.shell`
+     (and everything under it — `.body`, `.contentRow`, `.sidebar`, `.main`)
+     then shrinks to fit its own content instead of filling the viewport,
+     which is what made the sidebar's `border-right` stop partway down the
+     page instead of running the full height. `100dvh` is viewport-relative
+     and doesn't depend on the ancestor chain at all.
+
+     A hard `height`, not `min-height` — `min-height` was enough to fix the
+     short-content case above, but for *tall* content it's not a cap at all:
+     a flex container only sized by `min-height` still grows past it to fit
+     children, which is exactly what let `.body`'s content push `.shell`
+     taller than the viewport, scrolling the *whole page* — including the
+     primary header, a separate flex item above `.body` entirely — instead
+     of staying put while just `.body` scrolled internally (caught live: a
+     real board with enough cards to need it showed the header scrolled
+     mostly out of view). `height: 100dvh` caps it exactly at viewport
+     height either way, which is what actually lets `.body`'s own
+     `flex: 1 1 auto; min-height: 0; overflow-y: auto` (see its own comment)
+     absorb any excess instead of the excess pushing `.shell` taller. */
+  height: 100dvh;
+}
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
   align-items: stretch;
+  /* Caps this at its own flex-allotted height and makes it the scroll
+     boundary — without this, content taller than the viewport (e.g. a list
+     with enough cards to hit its own `max-height` cap, or just a lot of
+     lists' worth of combined height) had nowhere to go but to grow `.shell`
+     itself past `100dvh` (that container only has a `min-height`, not a
+     cap), which scrolled the *whole page*, dragging the primary header
+     along with it even though it's a separate flex item above `.body` —
+     caught live: a real-browser board view showed the header scrolled
+     mostly out of view, not just the lists. `overflow-x: hidden` since
+     `.listsRow` already owns its own horizontal scroll one level down; `.body`
+     scrolling horizontally too would be a second, redundant scrollbar. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Board View (`boards/[boardId]/page.tsx`) sets `--kanban-board-color`
+     via an inline `<style>` tag scoped to that page — everywhere else the
+     var is unset and this falls back to no background at all. Deliberately
+     the literal board hex, not a semantic token: this canvas color is
+     meant to stay constant across light/dark theme (only card/list surfaces
+     sitting on top of it adapt to theme), matching Trello's own board
+     backgrounds. */
+  background-color: var(--kanban-board-color, transparent);
+}
+
+/* --- Top header (web only; every page) ------------------------------------ */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* A compact top bar (Trello-reference sizing), not the platform's own
+     60px shell header — this plugin owns its whole viewport under
+     `shell: minimal`, so it isn't bound to platform chrome dimensions. */
+  min-height: 48px;
+  padding: var(--sv-space-2) var(--sv-space-4);
+  border-bottom: 1px solid var(--sv-color-border);
+  /* Always a plain neutral surface — the board color is only ever a
+     background for the lists area (`.body` below), never either header. */
+  background-color: var(--sv-color-surface);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+}
+
+/* Instance-initial brand badge — same treatment as the platform's own
+   `.brand` (runtime/app/(platform)/shell.module.css): accent-filled tile,
+   the instance name's first letter, no image asset involved. Links to
+   `/launcher`, same as the platform's own. */
+.headerBrandBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Matches .headerBrandIcon's 28px — was 32px, visibly larger than the
+     Kanban icon right next to it. */
+  width: 28px;
+  height: 28px;
+  border-radius: var(--sv-radius-md);
+  background-color: var(--sv-color-accent);
+  color: var(--sv-color-text-on-accent);
+  font-size: var(--sv-font-size-xs);
+  font-weight: var(--sv-font-weight-semibold);
+  text-decoration: none;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+}
+
+/* Apps trigger (opens `AppsDialog`) — the actual Launcher plugin's own icon,
+   not the instance badge (see this file's own comment above `.headerBrandBadge`
+   for why they're deliberately separate controls). A `<button>`, so needs its
+   own reset — a plain `<button>` otherwise carries a border/padding/background
+   this icon-only trigger doesn't want. */
+.headerAppsButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--sv-radius-md);
+  background: transparent;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .headerAppsButton:hover {
+    background: var(--sv-color-surface-sunken);
+  }
+}
+
+.headerAppsIcon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+/* Same SVG-can't-inherit-currentColor treatment as `.headerBrandIcon` above. */
+:global([data-theme='dark']) .headerAppsIcon {
+  filter: invert(1);
+}
+
+.headerBrand {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  text-decoration: none;
+  color: var(--sv-color-text-primary);
+}
+
+.headerBrandIcon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+/* SVG plugin icons are loaded as <img> and cannot inherit currentColor —
+   same treatment as the platform's own `.pluginIconImg`
+   (runtime/app/(platform)/shell.module.css): invert to white in dark mode
+   so the dark-stroke icon stays visible against the header's own neutral
+   surface, no invert needed in light mode. */
+:global([data-theme='dark']) .headerBrandIcon {
+  filter: invert(1);
+}
+
+.headerBrandName {
+  font-size: var(--sv-font-size-md);
+  font-weight: 600;
+}
+
+.headerAvatarLink {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--sv-radius-full);
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Matches the platform shell's own trigger/menu avatar treatment
+   (`runtime/app/(platform)/shell.module.css`'s `.avatar` and
+   `AccountMenu.module.css`'s `.menuAvatar`) — filled with the DS's monochrome
+   accent token rather than `Avatar`'s own default (a bordered, unfilled
+   `--sv-color-surface-raised` circle). `--sv-color-accent` is near-black in
+   light mode, near-white in dark mode (the DS's own monochrome identity —
+   see `packages/ui`'s token architecture docs), so this needs no
+   light/dark-specific rule of its own, unlike the header brand icon above.
+   `!important` required on all three — overrides Avatar's own `.avatar`
+   class rule, which otherwise wins the cascade (same DS-stylesheet-
+   injection-order quirk as `.searchInput`'s own `!important` use below).
+   Shared by every `Avatar` this plugin renders (the header trigger/menu, and
+   `BoardView`'s own member stack below) — not header-specific despite the
+   name's origin, so a single consistent avatar treatment across the plugin. */
+.accentAvatar {
+  background-color: var(--sv-color-accent) !important;
+  border-color: var(--sv-color-accent) !important;
+  color: var(--sv-color-text-on-accent) !important;
+}
+
+/* --- Account dropdown (Popover children) — mirrors the platform shell's own
+   AccountMenu.module.css 1:1 (same semantic tokens, same layout), since this
+   plugin can't import that component directly (see KanbanHeader.tsx's doc
+   comment). ------------------------------------------------------------- */
+
+.accountMenuHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-3);
+  padding: var(--sv-space-2) var(--sv-space-3);
+}
+
+.accountMenuUserInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.accountMenuName {
+  margin: 0;
+  font-size: var(--sv-font-size-sm);
+  font-weight: var(--sv-font-weight-semibold);
+  color: var(--sv-color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accountMenuEmail {
+  margin: 1px 0 0;
+  font-size: var(--sv-font-size-caption);
+  color: var(--sv-color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accountMenuDivider {
+  margin: var(--sv-space-1) 0;
+  border: none;
+  border-top: 1px solid var(--sv-color-border);
+}
+
+.accountMenuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  width: 100%;
+  min-height: var(--sv-touch-target-min, 44px);
+  padding: var(--sv-space-2) var(--sv-space-3);
+  border: none;
+  border-radius: var(--sv-radius-sm);
+  background: transparent;
+  color: var(--sv-color-text-primary);
+  font: inherit;
+  font-size: var(--sv-font-size-sm);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .accountMenuItem:hover {
+    background: var(--sv-color-surface-sunken);
+  }
+}
+
+.accountMenuItem:focus-visible {
+  outline: 2px solid var(--sv-color-focus-ring);
+  outline-offset: -2px;
+}
+
+.accountMenuItemDestructive {
+  color: var(--sv-color-error-text);
+}
+
+@media (hover: hover) {
+  .accountMenuItemDestructive:hover {
+    background: var(--sv-color-error-surface);
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    display: none;
+  }
+}
+
+/* --- Home content row: secondary sidebar + main (Home/Inbox only) -------- */
+
+.contentRow {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: stretch;
+  min-width: 0;
 }
 
 .main {
@@ -34,6 +323,9 @@
   font-weight: 500;
   color: var(--sv-color-text-muted);
   text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebarLink:hover {
@@ -53,6 +345,93 @@
   border-radius: var(--sv-radius-full);
   background: var(--sv-color-accent);
   margin-left: auto;
+}
+
+.sidebarGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-1);
+  margin-top: var(--sv-space-4);
+}
+
+.sidebarGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sv-space-3);
+  margin-bottom: var(--sv-space-1);
+}
+
+.sidebarGroupHeader .sidebarGroupLabel {
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.sidebarGroupLabel {
+  padding: 0 var(--sv-space-3);
+  margin-bottom: var(--sv-space-1);
+  color: var(--sv-color-text-muted);
+}
+
+.sidebarGroupEmpty {
+  padding: 0 var(--sv-space-3);
+  color: var(--sv-color-text-subtle);
+  font-style: italic;
+}
+
+.sidebarGroupAddButton {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--sv-radius-sm);
+  color: var(--sv-color-text-subtle);
+  cursor: pointer;
+}
+
+.sidebarGroupAddButton:hover {
+  background: var(--sv-color-surface-sunken);
+  color: var(--sv-color-text-primary);
+}
+
+.sidebarProjectRow {
+  position: relative;
+}
+
+.sidebarRowActions {
+  position: absolute;
+  right: var(--sv-space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.sidebarProjectRow:hover .sidebarRowActions,
+.sidebarProjectRow:focus-within .sidebarRowActions {
+  opacity: 1;
+}
+
+.sidebarRowAction {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--sv-radius-sm);
+  color: var(--sv-color-text-subtle);
+  cursor: pointer;
+  background: var(--sv-color-surface);
+}
+
+.sidebarRowAction:hover {
+  background: var(--sv-color-surface-sunken);
+  color: var(--sv-color-text-primary);
 }
 
 @media (max-width: 768px) {
@@ -78,10 +457,6 @@
   margin-bottom: var(--sv-space-4);
 }
 
-.projectHeaderSpacer {
-  flex: 1 1 auto;
-}
-
 .projectGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -100,22 +475,43 @@
   outline-offset: 2px;
 }
 
-.boardCardBody {
+/* Trello-style board tile: a colored banner on top, name below — not a
+   DS `Card` (its `padding` prop always pads the whole box, no way to let a
+   banner bleed to the edges), so this is plugin-local, built from the same
+   semantic tokens `Card` itself uses. */
+.boardCardTile {
   display: flex;
-  align-items: center;
-  gap: var(--sv-space-3);
-  min-height: var(--sv-space-12);
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--sv-color-border);
+  border-radius: var(--sv-radius-lg);
+  background: var(--sv-color-surface-raised);
+  box-shadow: var(--sv-shadow-card);
+  transition: border-color 0.15s ease;
 }
 
-.boardColorChip {
-  flex: 0 0 auto;
-  width: var(--sv-space-5);
-  height: var(--sv-space-5);
-  border-radius: var(--sv-radius-sm);
+@media (hover: hover) {
+  .boardCardLink:hover .boardCardTile {
+    border-color: var(--sv-color-border-strong);
+  }
+}
+
+.boardCardBanner {
+  height: 40px;
+  /* Default for a "no color" board (`resolveBoardColor` returns null, no
+     inline `backgroundColor` set) — a plain, subtle strip instead of a
+     blank gap the same white as the card itself. Any real board color
+     overrides this via inline style. */
+  background-color: var(--sv-color-surface-sunken);
+}
+
+.boardCardFooter {
+  padding: var(--sv-space-3) var(--sv-space-4);
 }
 
 .newBoardCard {
-  min-height: calc(var(--sv-space-12) + 2 * var(--sv-space-4));
+  min-height: 88px;
   width: 100%;
   border: 1px dashed var(--sv-color-border-strong);
   border-radius: var(--sv-radius-lg);
@@ -134,6 +530,92 @@
   justify-content: flex-end;
   gap: var(--sv-space-2);
   margin-top: var(--sv-space-2);
+}
+
+/* --- Apps switcher (AppsMenu.tsx) — a Popover, not a Dialog, matching the
+   compact floating "apps grid" pattern platforms like Google use next to
+   their own account avatar, rather than a full centered modal for what's
+   just a quick jump-to-another-app action. Popover's own panel carries no
+   padding of its own (see Popover.module.css), so both pieces below supply
+   their own. ------------------------------------------------------------- */
+
+.appsPopoverHeader {
+  padding: var(--sv-space-3) var(--sv-space-3) var(--sv-space-1);
+  font-size: var(--sv-font-size-sm);
+  font-weight: var(--sv-font-weight-semibold);
+  color: var(--sv-color-text-primary);
+}
+
+.appsPopoverLoading {
+  display: flex;
+  justify-content: center;
+  padding: var(--sv-space-6);
+}
+
+.appsPopoverError {
+  padding: 0 var(--sv-space-3) var(--sv-space-3);
+}
+
+.appsGrid {
+  display: grid;
+  /* `minmax(0, 1fr)`, not a plain `1fr` — a plain `1fr` track can grow past
+     the grid's own available width to fit an item's min-content size, and
+     `.appTileName`'s `white-space: nowrap` makes that min-content size the
+     full unwrapped text width. Caught live: a long app name ("Example:
+     Encrypted notes") blew the whole grid out past the popover's 320px
+     panel instead of the name truncating with ellipsis as intended —
+     `minmax(0, ...)` caps the track back to the grid's real width, which is
+     what lets `.appTileName`'s overflow/ellipsis rule actually engage. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sv-space-1);
+  padding: var(--sv-space-2);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.appTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sv-space-2);
+  padding: var(--sv-space-3) var(--sv-space-2);
+  border-radius: var(--sv-radius-md);
+  text-decoration: none;
+  color: var(--sv-color-text-primary);
+  text-align: center;
+}
+
+@media (hover: hover) {
+  .appTile:hover {
+    background: var(--sv-color-surface-sunken);
+  }
+}
+
+.appTileIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--sv-radius-md);
+  background: var(--sv-color-surface-sunken);
+  font-size: var(--sv-font-size-sm);
+  font-weight: var(--sv-font-weight-semibold);
+  overflow: hidden;
+}
+
+.appTileIconImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.appTileName {
+  font-size: var(--sv-font-size-caption);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .swatchRow {
@@ -157,6 +639,23 @@
   outline-offset: 1px;
 }
 
+/* "No color" swatch (board pickers only, never the label picker — a label
+   with no color would be an invisible chip) — an outlined/dashed circle
+   with an X glyph rather than a filled hex, since `_lib/palette.ts`'s
+   `BOARD_COLOR_NONE` isn't a real `PaletteColor` with a `value` to paint. */
+.swatchNone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--sv-color-surface-sunken);
+  border: 2px dashed var(--sv-color-border-strong);
+  color: var(--sv-color-text-muted);
+}
+
+.swatchNone.swatchSelected {
+  border-style: solid;
+}
+
 .formError {
   color: var(--sv-color-error-text);
   font-size: var(--sv-font-size-sm);
@@ -176,19 +675,115 @@
 
 /* --- Board view (K.5) ------------------------------------------------------ */
 
+/* Board View's own "secondary header" toolbar — replaces the shared
+   `PageHeader` DS component (see BoardView.tsx's doc comment for why).
+   Tighter vertical padding than PageHeader's own `--sv-space-6` margin —
+   reads more like a toolbar directly under the plugin's top header, closer
+   to Trello's own compact board-header row, less like a big page title.
+
+   Always a plain neutral surface — board color is only ever a background
+   for the lists area (`.body`), never either header (reversed from an
+   earlier pass that shaded both headers a darker mix of the board color;
+   kept only as much of that as the board color itself calls for). This
+   toolbar lives inside `PageContainer`'s own gutter padding (`board/
+   [boardId]/page.tsx` uses the `md` default, `--sv-space-8` on desktop —
+   this row only ever renders on desktop; mobile uses `MobileBoardHeader`
+   instead, so there's no need to also cancel PageContainer's separate
+   mobile gutter value here), so a plain background wouldn't reach the
+   viewport edges or sit flush under `.header` above it — negative margins
+   equal to that gutter cancel it on the top/left/right; bottom is a real
+   (positive) margin — space between this bar and the lists below, not a
+   bleed — caught live too: the very first pass left zero gap, the lists
+   row butting straight up against the toolbar's own bottom edge. */
+.boardToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sv-space-4);
+  margin: calc(-1 * var(--sv-space-8)) calc(-1 * var(--sv-space-8)) var(--sv-space-4);
+  padding: var(--sv-space-2) var(--sv-space-8);
+  /* A step down from the primary header's plain surface, same as the canvas
+     below it — the board color is only ever a background for the lists area
+     (`.body`), never either header, but this still reads as visually
+     distinct from `.header` above it (a sunken shade, not just the border
+     that used to be the only separation). */
+  background-color: var(--sv-color-surface-sunken);
+  border-bottom: 1px solid var(--sv-color-border);
+  /* Sticks to the top of `.body` (the scroll boundary, see its own comment)
+     as the lists scroll underneath — both headers stay in view while
+     scrolling, not just the primary one above `.body` entirely. `top: 0`
+     lines up flush with `.body`'s own top edge, which is exactly where the
+     negative top margin above already bleeds this to regardless of scroll
+     position. `z-index` only needs to clear its own sibling content
+     (`.listsRow`'s cards scrolling past underneath) — no other layer in this
+     stacking context to worry about. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.boardTitle {
+  min-width: 0;
+  flex-shrink: 0;
+  /* Smaller than Typography's own `.h1` default — reads as a toolbar label,
+     not a page title, matching this row's compact height. !important
+     required — overrides Typography's own `.h1` rule, which otherwise wins
+     the cascade (same DS-stylesheet-injection-order quirk as `.searchInput`'s
+     own `!important` use below). */
+  font-size: var(--sv-font-size-lg) !important;
+  color: var(--sv-color-text-primary) !important;
+}
+
+/* Centers the search field between the title and the actions cluster,
+   rather than it sitting flush against the title — grows to fill the
+   middle segment, then centers its (capped-width) child within that. */
+.boardToolbarCenter {
+  display: flex;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 var(--sv-space-4);
+}
+
 .boardHeaderActions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
-  gap: var(--sv-space-3);
-  /* PageHeader's `.action` (packages/ui) is `flex-shrink: 0` — with no
-     width constraint here, this row would otherwise claim its full
-     one-line natural width and let `.text`'s `min-width: 0` absorb 100% of
-     any deficit, crushing the board name to a sliver on a narrow viewport
-     instead of ever actually using `flex-wrap`. Capping the width is what
-     forces a real second row under space pressure. */
-  max-width: min(420px, 60vw);
+  /* Small and, deliberately, a single shared `gap` value — the flex `gap`
+     already spaces every pair (avatars↔Share, Share↔ellipsis) identically;
+     an earlier pass added `margin-left: auto` to the ellipsis specifically,
+     which produced a *larger*, uneven gap in front of it than the one
+     between the avatars and Share (caught live comparing the two). Removed
+     below — `justify-content: flex-end` on this container alone already
+     keeps the whole group, ellipsis included, flush to the toolbar's end. */
+  gap: var(--sv-space-2);
+  flex-shrink: 0;
+}
+
+/* `Menu` takes no `className` to target its root directly, hence the
+   wrapping span. */
+.boardOptionsMenu {
+  display: inline-flex;
+  /* Cancels two stacked insets so the ellipsis *glyph* itself — not just
+     its invisible button box — lines up with the account avatar directly
+     above it in `.header` (caught live: without this, the glyph sat
+     noticeably left of the avatar's own right edge). Ghost `Button`'s own
+     horizontal padding (`--sv-space-3`) insets the icon from the button's
+     edge; `.boardToolbar`'s wider padding (`--sv-space-8`) vs `.header`'s
+     narrower one (`--sv-space-4`) offsets the button's edge itself from
+     where the avatar sits. */
+  margin-right: calc(-1 * (var(--sv-space-8) - var(--sv-space-4) + var(--sv-space-3)));
+  /* Cancels the *other* side of that same ghost `Button` padding — without
+     this, the flex `gap` before this item (8px, matching every other gap in
+     `.boardHeaderActions`) was structurally correct but visually wrong: the
+     glyph itself sat a further `--sv-space-3` (12px) inside its own
+     invisible button box, so the *visible* gap after Share (~21px, measured
+     live) read noticeably bigger than the one before it (8px) even though
+     both were the same `gap` value. Share has no equivalent illusion — it's
+     a bordered, opaque button, so its own box edge already *is* its visible
+     edge. */
+  margin-left: calc(-1 * var(--sv-space-3));
 }
 
 .memberAvatarStack {
@@ -196,9 +791,37 @@
   align-items: center;
 }
 
+/* Member stack avatars — a muted neutral fill (`--sv-color-border-strong`),
+   deliberately lighter than the header/account avatar's `--sv-color-accent`
+   (near-black/white): a whole *row* of stark black-or-white circles read as
+   too heavy here, where they're one element among several in a busy toolbar,
+   not the single, deliberately-prominent identity affordance the header
+   avatar is. `!important` required on both — overrides Avatar's own
+   `.avatar` rule, which otherwise wins the cascade (same DS-stylesheet-
+   injection-order quirk as `.searchInput`'s own `!important` use below). */
+.memberAvatar {
+  background-color: var(--sv-color-border-strong) !important;
+  color: var(--sv-color-text-primary) !important;
+}
+
+/* 28px — a step up from Avatar's own `sm` (24px), reads better as a small
+   cluster of distinct people rather than a single decorative row. `sm` is
+   still the closest built-in preset (`md` at 32px reads too big packed this
+   tightly); the extra 4px and matching font bump are a plain size override.
+   `!important` required on all three — same cascade-order quirk as
+   `.memberAvatar`'s own comment above. */
 .stackedAvatar {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: var(--sv-font-size-xs) !important;
   margin-left: calc(var(--sv-space-2) * -1);
-  border: 2px solid var(--sv-color-surface);
+  /* Matches the toolbar's own surface behind it (`.boardToolbar`'s own
+     `--sv-color-surface-sunken`), so the separator ring between overlapping
+     avatars reads as a cutout, not a mismatched ring floating on top.
+     `!important` required — overrides Avatar's own `.avatar` border rule,
+     which otherwise wins the cascade (same DS-stylesheet-injection-order
+     quirk as `.searchInput`'s own `!important` use below). */
+  border: 2px solid var(--sv-color-surface-sunken) !important;
 }
 
 .stackedAvatar:first-child {
@@ -209,12 +832,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  /* Matches `.stackedAvatar`'s own 28px bump — see its comment above. */
+  width: 28px;
+  height: 28px;
   margin-left: calc(var(--sv-space-2) * -1);
   border-radius: var(--sv-radius-full);
-  background: var(--sv-color-surface-sunken);
-  border: 2px solid var(--sv-color-surface);
+  /* Own surface distinct from the toolbar behind it (a plain, non-sunken
+     badge), cutout ring matching the toolbar itself — the inverse pairing
+     of `.stackedAvatar`'s own Avatar circles, which are filled (accent) and
+     just need their *border* to blend into the toolbar. */
+  background: var(--sv-color-surface);
+  border: 2px solid var(--sv-color-surface-sunken);
   font-size: var(--sv-font-size-label);
   color: var(--sv-color-text-muted);
 }
@@ -287,7 +915,11 @@
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1 1 auto;
+  width: 100%;
+  /* Caps how wide the field grows inside `.boardToolbarCenter`'s centered
+     flex slot — wide enough to read as a real search bar, not so wide it
+     crowds the title/actions on a narrower viewport. */
+  max-width: 420px;
   min-width: 0;
 }
 
@@ -300,10 +932,19 @@
 
 .searchInput {
   width: 100%;
-  max-width: 160px;
-  min-width: 60px;
-  padding-left: var(--sv-space-8);
-  padding-right: var(--sv-space-8);
+  /* !important required on both — overrides Input's own base `padding`
+     shorthand, which otherwise silently wins over `padding-left`/
+     `padding-right` here despite equal specificity: `@sovereignfs/ui`
+     components append the caller's `className` after their own variant
+     class in the class LIST, but this build's actual CSS injection order
+     puts the design system's own stylesheet after this plugin's, so a
+     plain override loses without `!important` (same precedent as
+     `.addListCard`'s own `!important` use below, and `runtime/app/
+     globals.css`'s). Caught live: without it, the search icon visibly
+     overlapped the input's own placeholder text, since the real left
+     padding was Input's own 12px, not this rule's intended 32px. */
+  padding-left: var(--sv-space-8) !important;
+  padding-right: var(--sv-space-8) !important;
 }
 
 .searchClear {
@@ -318,12 +959,21 @@
   border-radius: var(--sv-radius-sm);
 }
 
+/* Bleeds past `PageContainer`'s own `--sv-space-8` (32px) gutter, then
+   re-adds a smaller `--sv-space-4` of its own — the lists read as the
+   board's *canvas*, not an article's body copy, so they should sit close to
+   the viewport edges the way Trello's own board area does, not carry the
+   same generous reading-width gutter the toolbar's title/controls keep
+   above it (that comparison — our board vs. Trello's own — is what this was
+   caught against; unlike `.boardToolbar`, which cancels-then-reapplies the
+   *same* 32px so its own content stays where it was, this reapplies less). */
 .listsRow {
   display: flex;
   align-items: flex-start;
   gap: var(--sv-space-4);
   overflow-x: auto;
-  padding-bottom: var(--sv-space-4);
+  margin: 0 calc(-1 * var(--sv-space-8));
+  padding: 0 var(--sv-space-4) var(--sv-space-4);
 }
 
 /* A filter disables drag entirely (BoardView.tsx) — swap the grab affordance
@@ -341,7 +991,20 @@
   background: var(--sv-color-surface-sunken);
   border-radius: var(--sv-radius-lg);
   padding: var(--sv-space-3);
-  max-height: calc(100vh - 220px);
+  /* 134px = the primary header (49px: 48px min-height + 1px border) +
+     `.boardToolbar` (53px, its own padding + tallest inline content) + the
+     `--sv-space-4` gap between the toolbar and this list (16px) + an equal
+     `--sv-space-4` gap this reserves below the list before the viewport's
+     own bottom edge — measured live, not derived purely from tokens, since
+     the toolbar's own height depends on its tallest inline content (the
+     Share button), not just its own padding. Was a stale `220px` before
+     this pass — a leftover from an earlier toolbar layout, caught live as a
+     ~90px unintended gap below the lists with no matching gap above them
+     (a live measurement showed 16px above vs. 102px below at 724px viewport
+     height). Re-measure and adjust this constant if the header/toolbar's
+     own rendered height changes again. */
+  max-height: calc(100vh - 134px);
+  box-shadow: var(--sv-shadow-card);
 }
 
 .listHeader {
@@ -377,6 +1040,16 @@
   flex: 1 1 auto;
 }
 
+/* Cancels ghost `Button`'s own horizontal padding (`--sv-space-3`) so the
+   ellipsis *glyph* itself — not just its invisible button box — lines up
+   with the cards' own right edge below it, both sitting on the same `.list`
+   padding otherwise (caught live: without this, the glyph sat visibly short
+   of the cards' edge). */
+.listOptionsMenu {
+  display: inline-flex;
+  margin-right: calc(-1 * var(--sv-space-3));
+}
+
 .listCards {
   display: flex;
   flex-direction: column;
@@ -385,12 +1058,44 @@
   min-height: 0;
 }
 
+/* Unlike the toolbar's own controls (always a plain neutral surface now —
+   see `.boardToolbar`'s comment), this ghost slot sits directly on the
+   board's canvas color (inside `.listsRow`, inside `.body`), so an opaque
+   white box looks out of place — a translucent surface reads as "part of
+   the canvas" instead, matching Trello's own look. Unset (no visible
+   change) everywhere `--kanban-board-color` isn't set. Opacity deliberately
+   high (60-78%) rather than a lower value a saturated Trello blue/red
+   canvas could get away with: this palette (`_lib/palette.ts`) is mostly
+   light pastel, so a subtle overlay on an already-light background was
+   nearly invisible in practice (caught live). A visible `box-shadow` (the
+   same `--sv-shadow-card` token list/card tiles use) gives it a floating
+   edge for the same reason. */
 .addListCard {
   flex: 0 0 220px;
   min-height: var(--sv-space-12);
   align-self: flex-start;
-  border: 1px dashed var(--sv-color-border-strong);
-  border-radius: var(--sv-radius-lg);
+  /* !important required on border/background/color — overrides Button's
+     own base `.button` border and `.ghost` background/color rules, which
+     otherwise win the cascade: `@sovereignfs/ui` components append the
+     caller's `className` after their own variant class in the class LIST,
+     but this build's actual CSS injection order puts the design system's
+     own stylesheet after this plugin's, so a plain override loses (same
+     precedent as `.searchInput`'s own `!important` use above, and
+     `runtime/app/globals.css`'s). `border-radius`/`flex`/etc. above don't
+     conflict with anything Button itself sets for this variant, so they
+     need no override. */
+  border-radius: var(--sv-radius-lg) !important;
+  border: 1px solid color-mix(in srgb, white 90%, transparent) !important;
+  background-color: color-mix(in srgb, white 60%, transparent) !important;
+  /* Fixed dark — readable regardless of whether the board's own color
+     needs light or dark text elsewhere, since this sits on its own white
+     glass surface, not directly on the canvas. */
+  color: var(--sv-grey-900) !important;
+  box-shadow: var(--sv-shadow-card) !important;
+}
+
+.addListCard:hover:not(:disabled) {
+  background-color: color-mix(in srgb, white 78%, transparent) !important;
 }
 
 .addListComposer,
@@ -434,6 +1139,7 @@
   text-decoration: none;
   color: inherit;
   touch-action: none;
+  box-shadow: var(--sv-shadow-card);
 }
 
 /* Gated to real pointer devices — un-gated :hover can get "stuck" showing

@@ -6,7 +6,7 @@ Guidance for Claude Code (and other agents) working in this repository.
 
 **Sovereign Kanban** — a minimalist, sovereign alternative to Trello: projects,
 boards, lists, and cards, built as an installable plugin for the
-[Sovereign](https://github.com/sovereignfs/sovereignfs) platform (`io.openfs.kanban`).
+[Sovereign](https://github.com/sovereignfs/sovereignfs) platform (`fs.sovereign.kanban`).
 
 ## Where this runs
 
