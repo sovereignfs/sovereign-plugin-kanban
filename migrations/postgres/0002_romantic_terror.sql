@@ -1,0 +1,19 @@
+ALTER TABLE "kanban_activity" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_board_members" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_boards" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_boards" ALTER COLUMN "updated_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_card_assignees" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_cards" ALTER COLUMN "due_date" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_cards" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_cards" ALTER COLUMN "updated_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_checklist_items" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_checklist_items" ALTER COLUMN "updated_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_comments" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_comments" ALTER COLUMN "updated_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_inbox_state" ALTER COLUMN "last_seen_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_labels" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_labels" ALTER COLUMN "updated_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_lists" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_lists" ALTER COLUMN "updated_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_projects" ALTER COLUMN "created_at" SET DATA TYPE bigint;--> statement-breakpoint
+ALTER TABLE "kanban_projects" ALTER COLUMN "updated_at" SET DATA TYPE bigint;

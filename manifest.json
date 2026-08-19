@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "fs.sovereign.kanban",
   "name": "Kanban",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "A minimalist, sovereign alternative to Trello — projects, boards, lists, and cards.",
   "type": "sovereign",
   "runtime": "native",

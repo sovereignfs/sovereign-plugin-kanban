@@ -7,7 +7,38 @@
 
 ## Status
 
-✅ Phase 1 complete — K.1–K.16 shipped, manifest at `0.17.0`.
+✅ Phase 1 complete — K.1–K.16 shipped, manifest at `0.17.1`.
+
+`0.17.0` → `0.17.1` fixes a real Postgres-only production bug, reported
+directly by a user deploying via Docker Compose to a fresh (non-upgrade)
+instance: every "Create project" (and, by the same root cause, every
+timestamp-writing mutation across the plugin) failed with a 500, server logs
+showing `value "..." is out of range for type integer` (Postgres error
+22003, `pg_strtoint32_safe`) on `kanban_projects`/`kanban_inbox_state`
+inserts. Root cause: `app/_db/schema.postgres.ts` (the migration-twin schema
+that drives `drizzle-kit generate --dialect postgresql`) declared every
+timestamp column (`createdAt`, `updatedAt`, `dueDate`, `lastSeenAt`) as
+plain `integer`, matching `./schema.ts`'s (SQLite) column type — SQLite's
+`integer` affinity has no real width limit, so this was silently fine there,
+but Postgres's `integer` is a real, fixed 32-bit type (max 2147483647), and
+a Unix millisecond timestamp is a 13-digit number already ~800x past that.
+This wasn't a future-dated overflow — it broke on the very first insert on
+any Postgres-dialect deployment, immediately upon shipping `0.17.0`'s
+Postgres schema. Fixed by switching every timestamp column in
+`schema.postgres.ts` to `bigint({ mode: 'number' })` (safe to 2^53, far
+beyond any real timestamp); `./schema.ts` (SQLite, what application code
+actually queries through) is unchanged. Generated the corresponding
+migration via `drizzle-kit generate --config=drizzle.config.pg.ts` —
+`migrations/postgres/0002_romantic_terror.sql`, a clean set of `ALTER
+COLUMN ... SET DATA TYPE bigint` statements, no `REFERENCES "public"...`
+qualifiers to strip since it's a pure type change. `done` (0/1) intentionally
+stays `integer` — no overflow risk. No test caught this before it shipped:
+`app/_db/__tests__/schema.test.ts` only exercises the real generated
+migrations against SQLite (per this plugin's own `CLAUDE.md`, there's no
+Postgres test harness here) — verified via `pnpm --filter
+sovereign-plugin-kanban typecheck` and the full plugin Vitest suite (84
+passed) after the fix, but the actual Postgres-dialect regression can only
+be caught by a live Postgres deployment, which is how the user found it.
 
 `1.0.0` → `0.17.0` re-identifies the plugin as first-party rather than
 community, and moves it to the chrome-free minimal shell — a deliberate

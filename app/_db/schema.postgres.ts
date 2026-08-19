@@ -4,9 +4,21 @@
  * Exists ONLY to drive `drizzle-kit generate --dialect postgresql`;
  * application code never imports it — queries always go through
  * `./schema.ts` (sqlite-core), whose column serialization this file must
- * match exactly: plain `integer` for booleans and timestamps (never native
- * `boolean`/`bigint`), `doublePrecision` for REAL positions. Keep every
- * table/column/index structurally identical to ./schema.ts.
+ * match as closely as possible: plain `integer` for booleans (never native
+ * `boolean`), `doublePrecision` for REAL positions. Keep every table/column/
+ * index structurally identical to ./schema.ts, EXCEPT timestamps (see below).
+ * `done` stays `integer` (0/1) — small values, no overflow risk.
+ *
+ * Timestamps are the one deliberate divergence: `./schema.ts` stores them as
+ * plain `integer` because SQLite's `integer` affinity has no real width
+ * limit (values are stored as 64-bit regardless of the declared type), but
+ * Postgres's `integer` is a real, fixed 32-bit type (max 2147483647). A Unix
+ * millisecond timestamp is a 13-digit number, already ~800x past that limit
+ * today — every insert failed immediately in production the moment this
+ * shipped (`value "..." is out of range for type integer`, Postgres error
+ * 22003), not after some future date. Every timestamp column here
+ * (`createdAt`, `updatedAt`, `dueDate`, `lastSeenAt`) uses `bigint({ mode:
+ * 'number' })` instead — safe up to 2^53, far beyond any real timestamp.
  *
  * After regenerating Postgres migrations, strip any
  * `REFERENCES "public"."..."` schema qualifier down to an unqualified
@@ -15,6 +27,7 @@
  * docs/plugin-database.md "Foreign keys in a Postgres schema".
  */
 import {
+  bigint,
   doublePrecision,
   index,
   integer,
@@ -32,8 +45,8 @@ export const projects = pgTable(
     name: text('name').notNull(),
     description: text('description'),
     createdBy: text('created_by').notNull(),
-    createdAt: integer('created_at').notNull(),
-    updatedAt: integer('updated_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
   (t) => [index('kanban_projects_tenant_idx').on(t.tenantId)],
 );
@@ -49,8 +62,8 @@ export const boards = pgTable(
     name: text('name').notNull(),
     color: text('color').notNull(),
     createdBy: text('created_by').notNull(),
-    createdAt: integer('created_at').notNull(),
-    updatedAt: integer('updated_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
   (t) => [index('kanban_boards_project_idx').on(t.projectId)],
 );
@@ -65,7 +78,7 @@ export const boardMembers = pgTable(
     tenantId: text('tenant_id').notNull(),
     role: text('role').notNull(),
     addedBy: text('added_by').notNull(),
-    createdAt: integer('created_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   },
   (t) => [
     primaryKey({ columns: [t.boardId, t.userId] }),
@@ -83,8 +96,8 @@ export const lists = pgTable(
       .references(() => boards.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     position: doublePrecision('position').notNull(),
-    createdAt: integer('created_at').notNull(),
-    updatedAt: integer('updated_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
   (t) => [index('kanban_lists_board_position_idx').on(t.boardId, t.position)],
 );
@@ -102,11 +115,11 @@ export const cards = pgTable(
       .references(() => lists.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     description: text('description'),
-    dueDate: integer('due_date'),
+    dueDate: bigint('due_date', { mode: 'number' }),
     position: doublePrecision('position').notNull(),
     createdBy: text('created_by').notNull(),
-    createdAt: integer('created_at').notNull(),
-    updatedAt: integer('updated_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
   (t) => [
     index('kanban_cards_board_idx').on(t.boardId),
@@ -124,8 +137,8 @@ export const labels = pgTable(
       .references(() => boards.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     color: text('color').notNull(),
-    createdAt: integer('created_at').notNull(),
-    updatedAt: integer('updated_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
   (t) => [index('kanban_labels_board_idx').on(t.boardId)],
 );
@@ -153,7 +166,7 @@ export const cardAssignees = pgTable(
     userId: text('user_id').notNull(),
     tenantId: text('tenant_id').notNull(),
     assignedBy: text('assigned_by').notNull(),
-    createdAt: integer('created_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   },
   (t) => [
     primaryKey({ columns: [t.cardId, t.userId] }),
@@ -172,8 +185,8 @@ export const checklistItems = pgTable(
     text: text('text').notNull(),
     done: integer('done').notNull().default(0),
     position: doublePrecision('position').notNull(),
-    createdAt: integer('created_at').notNull(),
-    updatedAt: integer('updated_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
   (t) => [index('kanban_checklist_items_card_position_idx').on(t.cardId, t.position)],
 );
@@ -191,8 +204,8 @@ export const comments = pgTable(
     }),
     authorId: text('author_id').notNull(),
     body: text('body').notNull(),
-    createdAt: integer('created_at').notNull(),
-    updatedAt: integer('updated_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
   (t) => [index('kanban_comments_card_idx').on(t.cardId)],
 );
@@ -209,7 +222,7 @@ export const activity = pgTable(
     actorId: text('actor_id').notNull(),
     type: text('type').notNull(),
     payload: text('payload'),
-    createdAt: integer('created_at').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
   },
   (t) => [
     index('kanban_activity_board_created_idx').on(t.boardId, t.createdAt),
@@ -220,5 +233,5 @@ export const activity = pgTable(
 export const inboxState = pgTable('kanban_inbox_state', {
   userId: text('user_id').primaryKey(),
   tenantId: text('tenant_id').notNull(),
-  lastSeenAt: integer('last_seen_at'),
+  lastSeenAt: bigint('last_seen_at', { mode: 'number' }),
 });
