@@ -7,9 +7,9 @@
 
 ## Status
 
-✅ Phase 1 complete — K.1–K.16 shipped, manifest at `2.0.0`.
+✅ Phase 1 complete — K.1–K.16 shipped, manifest at `0.17.0`.
 
-`1.0.0` → `2.0.0` re-identifies the plugin as first-party rather than
+`1.0.0` → `0.17.0` re-identifies the plugin as first-party rather than
 community, and moves it to the chrome-free minimal shell — a deliberate
 identity change, not a bug fix, hence the major bump (breaking: the id
 change alone moves the plugin's isolated DB namespace from

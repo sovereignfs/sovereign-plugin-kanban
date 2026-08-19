@@ -1,6 +1,6 @@
 # Sovereign Kanban — Roadmap
 
-**Manifest version:** 2.0.0 · **Last updated:** 2026-08-19
+**Manifest version:** 0.17.0 · **Last updated:** 2026-08-19
 
 Chronological build index — one row per PR, platform-`ROADMAP.md` style. Full
 task detail lives in [SPEC.md](SPEC.md); the product concept in
