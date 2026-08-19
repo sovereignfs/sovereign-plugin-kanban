@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { sdk } from '@sovereignfs/sdk';
+import { ToastProvider } from '@sovereignfs/ui';
 import { KanbanHeader } from './_components/KanbanHeader';
 import { KanbanMobileFooter, type MobileAppEntry } from './_components/KanbanMobileFooter';
 import { requireUser } from './_lib/authz';
@@ -36,6 +37,15 @@ import styles from './kanban.module.css';
  * needing its own fetch. The sidebar's own copy of this same badge is
  * fetched independently by `(home)/layout.tsx` (cheap query, avoids
  * threading data across sibling layouts).
+ *
+ * `ToastProvider` is supplied here rather than assumed: under `shell:
+ * default`, the platform's own `ClientShell` wraps every plugin page in one,
+ * but `runtime/app/(minimal)/layout.tsx` (what `shell: minimal` composes
+ * into) is deliberately chrome-free and provides none — a `minimal` plugin
+ * owns its own tree, providers included. Found live in production: every
+ * `useToast()` call (used throughout board/card actions) threw immediately
+ * on render — "useToast() must be used inside <ToastProvider>" — the moment
+ * this plugin moved off `shell: default` and lost the platform's provider.
  */
 export default async function KanbanLayout({ children }: { children: ReactNode }) {
   const actor = await requireUser();
@@ -68,17 +78,19 @@ export default async function KanbanLayout({ children }: { children: ReactNode }
     }));
 
   return (
-    <div className={styles.shell}>
-      <KanbanHeader
-        user={{
-          name: session?.user.name ?? null,
-          email: session?.user.email ?? '',
-          image: session?.user.image ?? null,
-        }}
-        instanceName={instanceName}
-      />
-      <div className={styles.body}>{children}</div>
-      <KanbanMobileFooter apps={apps} hasUnseenInbox={hasUnseenInbox} />
-    </div>
+    <ToastProvider>
+      <div className={styles.shell}>
+        <KanbanHeader
+          user={{
+            name: session?.user.name ?? null,
+            email: session?.user.email ?? '',
+            image: session?.user.image ?? null,
+          }}
+          instanceName={instanceName}
+        />
+        <div className={styles.body}>{children}</div>
+        <KanbanMobileFooter apps={apps} hasUnseenInbox={hasUnseenInbox} />
+      </div>
+    </ToastProvider>
   );
 }

@@ -7,7 +7,30 @@
 
 ## Status
 
-✅ Phase 1 complete — K.1–K.16 shipped, manifest at `0.17.1`.
+✅ Phase 1 complete — K.1–K.16 shipped, manifest at `0.17.2`.
+
+`0.17.1` → `0.17.2` fixes a second production bug found immediately after
+`0.17.1` unblocked project creation on the same user's deployment: opening
+any board (`/kanban/boards/[boardId]`) 500'd with `useToast() must be used
+inside <ToastProvider>`. Root cause is the same `shell: "default"` →
+`"minimal"` migration from `1.0.0`/`0.17.0` (see that entry above) — under
+`shell: default`, the platform's own `ClientShell` (`runtime/app/(platform)/
+_components/ClientShell.tsx`) wraps every plugin page in a `ToastProvider`,
+but `runtime/app/(minimal)/layout.tsx` (what `shell: minimal` composes into)
+is deliberately chrome-free and supplies no providers of its own — a
+`minimal` plugin owns its whole tree, including any context providers its
+components need. This plugin calls `useToast()` throughout board/card
+actions (`BoardView`, `ListColumn`, `CardDetailOverlay`, and others) and had
+never supplied its own `ToastProvider`, since it never needed to under the
+old `shell: default` manifest. Fixed by wrapping `KanbanLayout`'s
+(`app/layout.tsx`) returned tree in `<ToastProvider>` — the one shell-level
+layout common to every route in the plugin (Home, Inbox, and Board View all
+compose under it), so no per-route fix was needed. Verified live: cleared a
+stale local `.next` build cache that was independently producing unrelated
+500s, then loaded `/kanban/boards/[boardId]` in a fresh browser tab with no
+console history — zero errors, board rendered fully (5 lists, cards,
+avatars, menus) where it previously threw on first render. `pnpm --filter
+sovereign-plugin-kanban typecheck` also passes.
 
 `0.17.0` → `0.17.1` fixes a real Postgres-only production bug, reported
 directly by a user deploying via Docker Compose to a fresh (non-upgrade)
