@@ -59,6 +59,23 @@ in both respects:
    wraps correctly beneath `OverlayHeader`'s own truncated single-line
    pinned title, `⋮` menu trigger unaffected).
 
+**Follow-up on the same change, reported live with a screenshot: scrolling
+the modal left the Labels/Due date/Assignees row floating on top of the
+sticky header instead of sliding underneath it.** Not a missing
+background (there is one) — a stacking-context bug. `.cardMetaRow`'s
+controls are each built on `Popover` (`packages/ui`), whose container is
+`position: relative`, making it a *positioned* box that competes directly
+with the header's own `z-index: 0` stacking level instead of sitting
+safely below it as plain static content would — and since it renders
+later in the DOM, tree order broke the tie in its favor. Fixed by bumping
+`.cardHeader` to `z-index: 1` and, in the same fix, `Dialog`'s own
+`.close` button (`packages/ui`, platform-wide) from `z-index: 1` to `2` so
+it stays unambiguously above the header rather than tying with it.
+Verified live by scrolling the dialog to several positions with a real
+multi-line title in place — header cleanly covers all scrolling content
+underneath it, delete/close alignment from the fix above unaffected (still
+within 1px). No version bump — lands on the same unmerged change.
+
 **Card detail modal header/layout retouch, three rounds of direct
 developer feedback on the same modal (0.20.6 → 0.20.7).** (1) **Header
 vertical alignment + delete affordance.** The header row (title input,
