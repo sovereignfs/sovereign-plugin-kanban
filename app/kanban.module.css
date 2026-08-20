@@ -58,6 +58,35 @@
   background-color: var(--kanban-board-color, transparent);
 }
 
+/* Applied to `EmptyBoard`'s `EmptyState` (`BoardView.tsx`) — the one place a
+   board paints text directly on the raw `--kanban-board-color` fill above,
+   with no card/surface behind it. `EmptyState`'s own heading/description/
+   icon read the ordinary theme-reactive `--sv-color-text-*` tokens, which
+   have no way to know this fill exists; these two classes locally override
+   just those three tokens, for just this subtree, sourced from
+   `@sovereignfs/ui`'s theme-invariant `--sv-color-text-on-*-fill` pair
+   (picked per-board via `resolveBoardColor(board.color).textOn` in
+   `BoardView.tsx`) rather than a hardcoded literal — same
+   `color-mix(..., transparent)`-for-a-lighter-tier pattern already used by
+   `--sv-color-accent-subtle` in `packages/ui`'s own tokens. Not applied at
+   all when the board has no colour set, so the ordinary theme-reactive
+   value is unchanged in that case. */
+.emptyBoardOnLightFill {
+  --sv-color-text-primary: var(--sv-color-text-on-light-fill);
+  --sv-color-text-muted: color-mix(in srgb, var(--sv-color-text-on-light-fill) 70%, transparent);
+  --sv-color-text-subtle: color-mix(
+    in srgb,
+    var(--sv-color-text-on-light-fill) 55%,
+    transparent
+  );
+}
+
+.emptyBoardOnDarkFill {
+  --sv-color-text-primary: var(--sv-color-text-on-dark-fill);
+  --sv-color-text-muted: color-mix(in srgb, var(--sv-color-text-on-dark-fill) 70%, transparent);
+  --sv-color-text-subtle: color-mix(in srgb, var(--sv-color-text-on-dark-fill) 55%, transparent);
+}
+
 /* --- Top header (web only; every page) ------------------------------------ */
 
 .header {

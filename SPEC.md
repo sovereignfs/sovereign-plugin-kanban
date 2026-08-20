@@ -90,17 +90,51 @@ green across both repos: typecheck, `pnpm exec eslint`, `pnpm exec prettier
 --check`, `pnpm design:tokens:check`, and `pnpm exec vitest run` (579
 tests, 81 files, all passing).
 
-**Found in passing, not fixed here — flagged as a separate follow-up:**
-`PaletteColor.textOn` (and `computeTextOn` for custom colors) is computed
-by `resolveBoardColor` but not actually consumed anywhere in the current
-rendering code — grepped the whole app, no callsite reads `.textOn`. In
-practice this means the board canvas's own empty state ("Add your first
-list"), which paints text directly on the raw board-color background with
-no card/surface behind it, doesn't adapt its text color for a dark board
-color (curated or custom) — a pre-existing gap, not a regression from this
-change (a curated dark swatch like "Charcoal" hits the same issue today).
-Out of scope for this task since it wasn't reported and isn't something the
-custom-color addition makes meaningfully worse.
+**Follow-up, same unmerged change: wired up `textOn` for the board canvas's
+empty state.** The "found in passing, not fixed here" note above was acted
+on the same day, still within this PR — `resolveBoardColor`'s `textOn`
+field was computed but never actually consumed by any renderer, so a dark
+board colour (curated "Charcoal" or a dark custom pick) left the empty
+"Add your first list" state's text at a fixed dark colour with poor
+contrast against its own background.
+
+Fixed by wiring `EmptyBoard` (`BoardView.tsx`) to call `resolveBoardColor`
+itself and apply one of two new plugin CSS classes,
+`.emptyBoardOnLightFill`/`.emptyBoardOnDarkFill`, which locally override
+just the three `--sv-color-text-*` tokens `EmptyState`'s own CSS reads
+(primary/muted/subtle — the last two derived via `color-mix(...,
+transparent)`, the same pattern `packages/ui`'s own
+`--sv-color-accent-subtle` already uses) for that one subtree. Neither
+class is applied when the board has no colour, so the ordinary
+theme-reactive value is unchanged in that case — verified live.
+
+**New `@sovereignfs/ui` semantic tokens: `--sv-color-text-on-light-fill` /
+`--sv-color-text-on-dark-fill`** (`packages/ui/src/tokens/semantic.css`),
+not a plugin-local literal — reusing the DS's own `--sv-grey-950`/
+`--sv-grey-50` primitives would have violated "plugins reference semantic
+tokens, never primitives directly," so this promoted the actual need (a
+guaranteed-contrast pair for text painted on a *plugin-supplied literal*
+background, independent of the app's own light/dark theme) into the design
+system instead of reaching around it. Declared once at `:root` only, not
+repeated under `[data-theme='dark']` — same "reads the same regardless of
+overall page theme" precedent already established by
+`--sv-color-text-on-error`/`-success`. Added to both `TokenGallery.stories.tsx`
+and `DesignSystemOverview.stories.tsx`'s Text color group per the repo's
+Storybook-hygiene convention.
+
+Verified live end-to-end with real `getComputedStyle()` reads, not just
+visually: a dark curated swatch (Charcoal) and a dark custom hex
+(`#1a1a2e`) both resolved the empty-state heading to `#fafafa` at the
+correct opacity tiers for the muted/subtle text; a light custom hex
+(`#f0f0e0`) resolved to `#09090b`; "No color" left the root `className`
+without either override class, confirming the fallback path is untouched.
+One session-expiry interruption during testing (an unrelated `/api/verify`
+401 mid-test, not a regression) was investigated via the dev server logs
+before concluding it wasn't caused by this change, and testing resumed
+after re-authenticating. Full check suite green: typecheck (both
+packages), `pnpm exec eslint`, `pnpm exec prettier --check`,
+`pnpm design:tokens:check` (122 tokens now), and `pnpm exec vitest run`
+(579 tests, 81 files, all passing).
 
 **Card title wraps instead of overflowing (0.20.7 → 0.20.8).** Reported
 directly, with a screenshot: a long card title stayed on one line and ran

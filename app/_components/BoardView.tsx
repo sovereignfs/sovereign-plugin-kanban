@@ -29,6 +29,7 @@ import { useBoardDndSensors } from '../_lib/dndSensors';
 import { matchesBoardFilter, normalizeFilterQuery } from '../_lib/filter';
 import { displayName } from '../_lib/identity';
 import { applyOrder, listIdFromDropId, neighborsOf, seedOrder } from '../_lib/order';
+import { resolveBoardColor } from '../_lib/palette';
 import type { BoardCardSummary, BoardData, BoardList, CardDetail } from '../_lib/queries';
 import styles from '../kanban.module.css';
 import { AddListSlot } from './AddListSlot';
@@ -213,7 +214,7 @@ export function BoardView({
           />
           <div className={styles.mobileBoardContent}>
             {board.lists.length === 0 ? (
-              <EmptyBoard boardId={board.id} />
+              <EmptyBoard boardId={board.id} color={board.color} />
             ) : (
               <MobileBoardView board={board} orderedLists={orderedLists} cardsFor={cardsFor} />
             )}
@@ -295,7 +296,9 @@ export function BoardView({
             </div>
           </div>
 
-          {board.lists.length === 0 ? <EmptyBoard boardId={board.id} /> : null}
+          {board.lists.length === 0 ? (
+            <EmptyBoard boardId={board.id} color={board.color} />
+          ) : null}
         </>
       )}
 
@@ -440,13 +443,34 @@ function MemberAvatarStack({
   );
 }
 
-function EmptyBoard({ boardId }: { boardId: string }) {
+/**
+ * This is the one place a board's empty canvas paints text directly on the
+ * raw board colour, with no card/surface behind it — every other surface on
+ * the canvas (lists, cards) sits on its own opaque background regardless of
+ * board colour. `EmptyState`'s own heading/description/icon read the
+ * ordinary theme-reactive `--sv-color-text-*` tokens, which have no idea the
+ * board colour even exists (and can't — it's plugin data, not something the
+ * app theme reacts to). `textOn` (hand-picked per curated swatch, WCAG-
+ * computed for a custom hex) picks whichever of `@sovereignfs/ui`'s two
+ * theme-invariant `--sv-color-text-on-*-fill` tokens actually contrasts with
+ * this specific board's colour, then locally overrides the three tokens
+ * EmptyState reads for just this subtree — a board with no colour set falls
+ * through to the ordinary theme-reactive value unchanged.
+ */
+function EmptyBoard({ boardId, color }: { boardId: string; color: string }) {
+  const resolved = resolveBoardColor(color);
+  const textOnClass = resolved
+    ? resolved.textOn === 'light'
+      ? styles.emptyBoardOnDarkFill
+      : styles.emptyBoardOnLightFill
+    : undefined;
   return (
     <EmptyState
       icon="grid-2x2"
       heading="Add your first list"
       description={'Lists organize this board’s cards — try "To Do", "In Progress", "Done".'}
       action={<AddListSlot boardId={boardId} variant="empty" />}
+      className={textOnClass}
     />
   );
 }
