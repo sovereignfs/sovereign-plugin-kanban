@@ -28,11 +28,12 @@ import { isBoardColor, isBoardColorOrNone } from './_lib/palette';
 import { recordActivity } from './_lib/activity';
 import {
   getBoardRole,
+  getProjectRole,
   requireBoardMember,
   requireBoardOwner,
   requireCardAccess,
   requireListAccess,
-  requireProjectCreator,
+  requireProjectOwner,
   requireUser,
 } from './_lib/authz';
 import { getDb } from './_lib/db';
@@ -70,14 +71,29 @@ export async function createProject(input: {
   if (typeof name !== 'string') return name;
   const db = await getDb();
   const now = Date.now();
-  await db.insert(schema.projects).values({
-    id: newId(),
-    tenantId: actor.tenantId,
-    name,
-    description: input.description?.trim() || null,
-    createdBy: actor.userId,
-    createdAt: now,
-    updatedAt: now,
+  const projectId = newId();
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.projects).values({
+      id: projectId,
+      tenantId: actor.tenantId,
+      name,
+      description: input.description?.trim() || null,
+      createdBy: actor.userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    // Phase 2 (K.18): the creator becomes the project's first owner via
+    // kanban_project_members — this is what requireProjectOwner (createBoard,
+    // updateProject, deleteProject) and getBoardData's viewer resolution
+    // actually read; created_by alone is no longer enough.
+    await tx.insert(schema.projectMembers).values({
+      projectId,
+      userId: actor.userId,
+      tenantId: actor.tenantId,
+      role: 'owner',
+      addedBy: actor.userId,
+      createdAt: now,
+    });
   });
   refresh();
   return ok('Project created.');
@@ -87,10 +103,11 @@ export async function updateProject(input: {
   projectId: string;
   name?: string;
   description?: string | null;
+  visibility?: 'public' | 'private';
 }): Promise<ActionResult> {
   const actor = await requireUser();
   const db = await getDb();
-  if (!(await requireProjectCreator(db, input.projectId, actor))) return fail(NOT_FOUND_PROJECT);
+  if (!(await requireProjectOwner(db, input.projectId, actor))) return fail(NOT_FOUND_PROJECT);
 
   const patch: Partial<typeof schema.projects.$inferInsert> = { updatedAt: Date.now() };
   if (input.name !== undefined) {
@@ -99,6 +116,7 @@ export async function updateProject(input: {
     patch.name = name;
   }
   if (input.description !== undefined) patch.description = input.description?.trim() || null;
+  if (input.visibility !== undefined) patch.visibility = input.visibility;
 
   await db.update(schema.projects).set(patch).where(eq(schema.projects.id, input.projectId));
   refresh();
@@ -108,10 +126,182 @@ export async function updateProject(input: {
 export async function deleteProject(input: { projectId: string }): Promise<ActionResult> {
   const actor = await requireUser();
   const db = await getDb();
-  if (!(await requireProjectCreator(db, input.projectId, actor))) return fail(NOT_FOUND_PROJECT);
+  if (!(await requireProjectOwner(db, input.projectId, actor))) return fail(NOT_FOUND_PROJECT);
   await db.delete(schema.projects).where(eq(schema.projects.id, input.projectId));
   refresh();
   return ok('Project deleted.');
+}
+
+// ---------------------------------------------------------------------------
+// Project members & share (K.19)
+
+/**
+ * Directory search for the project share dialog's "add a member" picker,
+ * excluding current members. This is the only place a genuinely new person
+ * (not already known to this project) enters the picture — the board-add
+ * picker (`getBoardMemberCandidates`, K.20) sources its own candidates from
+ * project members only, never a fresh directory search. Owner-only, like
+ * the rest of membership management.
+ */
+export async function searchProjectMemberCandidates(input: {
+  projectId: string;
+  query: string;
+}): Promise<DirectoryUser[]> {
+  const actor = await requireUser();
+  const db = await getDb();
+  if (!(await requireProjectOwner(db, input.projectId, actor))) return [];
+  const query = input.query.trim();
+  if (query.length < 2) return [];
+
+  const [results, memberRows] = await Promise.all([
+    sdk.directory.searchUsers({ query, limit: 8 }),
+    db
+      .select({ userId: schema.projectMembers.userId })
+      .from(schema.projectMembers)
+      .where(eq(schema.projectMembers.projectId, input.projectId)),
+  ]);
+  const memberIds = new Set(memberRows.map((m) => m.userId));
+  return results.filter((u) => !memberIds.has(u.id));
+}
+
+export async function addProjectMember(input: {
+  projectId: string;
+  userId: string;
+}): Promise<ActionResult> {
+  const actor = await requireUser();
+  const db = await getDb();
+  if (!(await requireProjectOwner(db, input.projectId, actor))) return fail(NOT_FOUND_PROJECT);
+
+  const existingRole = await getProjectRole(db, input.projectId, {
+    userId: input.userId,
+    tenantId: actor.tenantId,
+  });
+  if (existingRole) return fail('This person is already a member.');
+
+  const [target] = await sdk.directory.resolveUsers({ ids: [input.userId] });
+  if (!target) return fail('That person could not be found.');
+
+  const projectRows = await db
+    .select({ name: schema.projects.name })
+    .from(schema.projects)
+    .where(eq(schema.projects.id, input.projectId));
+  const projectName = projectRows[0]?.name ?? 'a project';
+
+  await db.insert(schema.projectMembers).values({
+    projectId: input.projectId,
+    userId: input.userId,
+    tenantId: actor.tenantId,
+    role: 'member',
+    addedBy: actor.userId,
+    createdAt: Date.now(),
+  });
+
+  // Fired after the insert commits, same as addBoardMember (K.9) — a failed
+  // send shouldn't roll back a successful membership grant.
+  await sdk.notifications.send(
+    {
+      recipientUserId: input.userId,
+      title: 'Added to a project',
+      body: `You now have access to "${projectName}" on Kanban.`,
+      url: `/kanban#project-${input.projectId}`,
+      category: 'info',
+    },
+    await headers(),
+  );
+
+  refresh();
+  return ok('Member added.');
+}
+
+/** How many project owners exist — the invariant `removeProjectMember` and `updateProjectMemberRole` both protect. */
+async function countProjectOwners(
+  db: Awaited<ReturnType<typeof getDb>>,
+  projectId: string,
+): Promise<number> {
+  const rows = await db
+    .select({ userId: schema.projectMembers.userId })
+    .from(schema.projectMembers)
+    .where(and(eq(schema.projectMembers.projectId, projectId), eq(schema.projectMembers.role, 'owner')));
+  return rows.length;
+}
+
+/**
+ * Owner-only, like `removeBoardMember` — but unlike boards (which never
+ * gained a promote-to-owner UI, so "the owner" removing themselves always
+ * meant the board's only owner), projects support co-owners. The rule here
+ * is a plain invariant instead: never let a project end up with zero
+ * owners. An owner stepping down while another owner remains is allowed,
+ * including removing themselves.
+ *
+ * Deliberately NOT cascading to this project's boards — a `kanban_board_members`
+ * row is still independent access, same as Phase 1. Removing someone from a
+ * project only affects their project-level visibility (K.18's `'viewer'`
+ * path) and their eligibility to be added to a NEW board (K.20); it does
+ * not silently strip access to boards they were separately, explicitly
+ * added to.
+ */
+export async function removeProjectMember(input: {
+  projectId: string;
+  userId: string;
+}): Promise<ActionResult> {
+  const actor = await requireUser();
+  const db = await getDb();
+  if (!(await requireProjectOwner(db, input.projectId, actor))) return fail(NOT_FOUND_PROJECT);
+
+  const existingRole = await getProjectRole(db, input.projectId, {
+    userId: input.userId,
+    tenantId: actor.tenantId,
+  });
+  if (!existingRole) return fail('That person is not a member of this project.');
+
+  if (existingRole === 'owner' && (await countProjectOwners(db, input.projectId)) <= 1) {
+    return fail('A project needs at least one owner — promote someone else first.');
+  }
+
+  await db
+    .delete(schema.projectMembers)
+    .where(
+      and(
+        eq(schema.projectMembers.projectId, input.projectId),
+        eq(schema.projectMembers.userId, input.userId),
+      ),
+    );
+  refresh();
+  return ok('Member removed.');
+}
+
+/** Promote a member to co-owner, or demote a co-owner to member — owner-only, same last-owner protection as removal. */
+export async function updateProjectMemberRole(input: {
+  projectId: string;
+  userId: string;
+  role: 'owner' | 'member';
+}): Promise<ActionResult> {
+  const actor = await requireUser();
+  const db = await getDb();
+  if (!(await requireProjectOwner(db, input.projectId, actor))) return fail(NOT_FOUND_PROJECT);
+
+  const existingRole = await getProjectRole(db, input.projectId, {
+    userId: input.userId,
+    tenantId: actor.tenantId,
+  });
+  if (!existingRole) return fail('That person is not a member of this project.');
+  if (existingRole === input.role) return ok('No change.');
+
+  if (existingRole === 'owner' && (await countProjectOwners(db, input.projectId)) <= 1) {
+    return fail('A project needs at least one owner — promote someone else first.');
+  }
+
+  await db
+    .update(schema.projectMembers)
+    .set({ role: input.role })
+    .where(
+      and(
+        eq(schema.projectMembers.projectId, input.projectId),
+        eq(schema.projectMembers.userId, input.userId),
+      ),
+    );
+  refresh();
+  return ok(input.role === 'owner' ? 'Promoted to owner.' : 'Changed to member.');
 }
 
 // ---------------------------------------------------------------------------
@@ -126,9 +316,9 @@ export async function createBoard(input: {
   const name = cleanName(input.name, 'Board name');
   if (typeof name !== 'string') return name;
   const db = await getDb();
-  // Boards are created by their project's creator; membership governs
-  // everything after creation.
-  if (!(await requireProjectCreator(db, input.projectId, actor))) return fail(NOT_FOUND_PROJECT);
+  // Boards are created by a project owner (K.18: any co-owner, not just the
+  // original creator); board membership governs everything after creation.
+  if (!(await requireProjectOwner(db, input.projectId, actor))) return fail(NOT_FOUND_PROJECT);
 
   const now = Date.now();
   const boardId = newId();
@@ -198,32 +388,52 @@ export async function deleteBoard(input: { boardId: string }): Promise<ActionRes
 // Board members & share (K.9)
 
 /**
- * Directory search for the share dialog's "add a member" picker, already
- * excluding current members — an owner searching for someone already on the
- * board would otherwise just hit `addBoardMember`'s "already a member"
- * denial for no reason. Owner-only, like the rest of membership management;
- * returns an empty list rather than `fail()` since this isn't a mutation a
- * form reports errors for, it's a live search-as-you-type result set.
+ * K.20 — candidates for the share dialog's "add a member" picker, sourced
+ * from the board's own project membership, never a fresh directory search
+ * (that's `searchProjectMemberCandidates`'s job, one level up, for adding a
+ * genuinely new person to the *project*). A board can only ever be shared
+ * with someone already trusted at the project level — the picker (and
+ * therefore `addBoardMember`, which re-checks project membership itself at
+ * K.18's project-role read) can't hand board access to a stranger the
+ * project doesn't already know. Already excludes current board members —
+ * an owner wouldn't see someone already on the board offered again. Returns
+ * the *whole* eligible list rather than taking a `query` — the plugin-local
+ * `MemberPicker` filters it client-side, no server round-trip per
+ * keystroke, since project membership is a small, already-known set rather
+ * than the full user directory `searchProjectMemberCandidates` searches.
+ * Owner-only, like the rest of membership management; returns an empty
+ * list rather than `fail()` — this isn't a mutation a form reports errors
+ * for.
  */
-export async function searchBoardMemberCandidates(input: {
-  boardId: string;
-  query: string;
-}): Promise<DirectoryUser[]> {
+export async function getBoardMemberCandidates(input: { boardId: string }): Promise<DirectoryUser[]> {
   const actor = await requireUser();
   const db = await getDb();
   if (!(await requireBoardOwner(db, input.boardId, actor))) return [];
-  const query = input.query.trim();
-  if (query.length < 2) return [];
 
-  const [results, memberRows] = await Promise.all([
-    sdk.directory.searchUsers({ query, limit: 8 }),
+  const boardRows = await db
+    .select({ projectId: schema.boards.projectId })
+    .from(schema.boards)
+    .where(eq(schema.boards.id, input.boardId));
+  const projectId = boardRows[0]?.projectId;
+  if (!projectId) return [];
+
+  const [projectMemberRows, boardMemberRows] = await Promise.all([
+    db
+      .select({ userId: schema.projectMembers.userId })
+      .from(schema.projectMembers)
+      .where(eq(schema.projectMembers.projectId, projectId)),
     db
       .select({ userId: schema.boardMembers.userId })
       .from(schema.boardMembers)
       .where(eq(schema.boardMembers.boardId, input.boardId)),
   ]);
-  const memberIds = new Set(memberRows.map((m) => m.userId));
-  return results.filter((u) => !memberIds.has(u.id));
+  const boardMemberIds = new Set(boardMemberRows.map((m) => m.userId));
+  const eligibleIds = projectMemberRows
+    .map((m) => m.userId)
+    .filter((id) => !boardMemberIds.has(id));
+  if (eligibleIds.length === 0) return [];
+
+  return sdk.directory.resolveUsers({ ids: eligibleIds });
 }
 
 export async function addBoardMember(input: { boardId: string; userId: string }): Promise<ActionResult> {
@@ -241,10 +451,23 @@ export async function addBoardMember(input: { boardId: string; userId: string })
   if (!target) return fail('That person could not be found.');
 
   const boardRows = await db
-    .select({ name: schema.boards.name })
+    .select({ name: schema.boards.name, projectId: schema.boards.projectId })
     .from(schema.boards)
     .where(eq(schema.boards.id, input.boardId));
   const boardName = boardRows[0]?.name ?? 'a board';
+  const projectId = boardRows[0]?.projectId;
+
+  // K.20 — a board can only be shared with someone already trusted at the
+  // project level (see `getBoardMemberCandidates`'s own comment for why).
+  // Enforced here too, not just in the picker that sources candidates from
+  // that same set — an action is a public POST endpoint dispatched by
+  // action id, so relying on the UI never offering a non-project-member as
+  // an option would leave a direct request (a forged or scripted one) able
+  // to hand board access to a stranger the project doesn't know at all.
+  // Checked *after* the directory-existence check above so a genuinely
+  // nonexistent user still gets "could not be found," not this message.
+  if (!projectId || !(await getProjectRole(db, projectId, { userId: input.userId, tenantId: actor.tenantId })))
+    return fail('Add them to the project first.');
 
   const now = Date.now();
   await db.transaction(async (tx) => {
@@ -274,7 +497,7 @@ export async function addBoardMember(input: { boardId: string; userId: string })
       recipientUserId: input.userId,
       title: 'Added to a board',
       body: `You now have access to "${boardName}" on Kanban.`,
-      url: `/kanban/boards/${input.boardId}`,
+      url: `/kanban/b/${input.boardId}`,
       category: 'info',
     },
     await headers(),
@@ -755,7 +978,7 @@ export async function assignMember(input: { cardId: string; userId: string }): P
 
   // No self-notification for self-assignment. Fired after the transaction
   // commits, deep-linking straight to the card per SPEC's notification URL
-  // convention (`/kanban/boards/<id>?card=<id>`).
+  // convention (`/kanban/b/<id>?card=<id>`).
   if (input.userId !== actor.userId) {
     const cardRows = await db
       .select({ title: schema.cards.title })
@@ -767,7 +990,7 @@ export async function assignMember(input: { cardId: string; userId: string }): P
         recipientUserId: input.userId,
         title: 'Assigned to a card',
         body: `You were assigned to "${cardTitle}" on Kanban.`,
-        url: `/kanban/boards/${access.boardId}?card=${input.cardId}`,
+        url: `/kanban/b/${access.boardId}?card=${input.cardId}`,
         category: 'info',
       },
       await headers(),
@@ -1042,7 +1265,7 @@ export async function addComment(input: {
             reason === 'reply'
               ? `Someone replied to your comment on "${cardTitle}".`
               : `Someone commented on "${cardTitle}".`,
-          url: `/kanban/boards/${access.boardId}?card=${input.cardId}`,
+          url: `/kanban/b/${access.boardId}?card=${input.cardId}`,
           category: 'info',
         },
         requestHeaders,
@@ -1114,10 +1337,12 @@ export async function updateProjectForm(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
+  const visibility = formData.get('visibility');
   return updateProject({
     projectId: String(formData.get('projectId') ?? ''),
     name: String(formData.get('name') ?? ''),
     description: String(formData.get('description') ?? '') || null,
+    visibility: visibility === 'private' ? 'private' : 'public',
   });
 }
 

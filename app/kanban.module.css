@@ -295,11 +295,27 @@
   flex: 1 1 auto;
   align-items: stretch;
   min-width: 0;
+  /* Caps this row at `.body`'s own available height instead of growing to
+     fit `.main`'s full content — `.main` becomes its own scroll boundary
+     below instead. A first attempt used `position: sticky` on `.sidebar`
+     itself, reasoning that `align-items: stretch` would size it to match
+     `.main`'s full (taller) content, giving sticky "room" to stay pinned
+     for the whole scroll range — live-tested wrong: the sticky sidebar's
+     actual height turned out to track close to the *viewport*, not the
+     full content, so once scrolled past that height it ran out of room to
+     stick and scrolled away entirely (developer caught this: sidebar
+     vanished, not just misaligned). This is the more standard fix instead
+     — two independent scroll panes, `.sidebar` fixed / `.main` scrolling —
+     same shape as `.shell`/`.body`'s own already-proven header-stays-put
+     pattern, one level deeper. */
+  min-height: 0;
+  overflow: hidden;
 }
 
 .main {
   flex: 1 1 auto;
   min-width: 0;
+  overflow-y: auto;
 }
 
 /* --- Secondary sidebar (web only; mobile layout is K.12) ----------------- */
@@ -311,6 +327,15 @@
   gap: var(--sv-space-1);
   padding: var(--sv-space-4) var(--sv-space-3);
   border-right: 1px solid var(--sv-color-border);
+  /* No longer needs `position: sticky` — `.contentRow`'s own `overflow:
+     hidden` cap plus `.main`'s independent `overflow-y: auto` (above) mean
+     `.sidebar` is never part of any scrolling content in the first place,
+     so it simply never moves. This also fixes the border-right ending
+     partway down the page (same underlying cause, developer-reported
+     together): `align-items: stretch` now sizes `.sidebar` to
+     `.contentRow`'s own capped (viewport) height, so the border always
+     spans exactly the visible column, at any scroll position. */
+  overflow-y: auto;
 }
 
 .sidebarLink {
@@ -347,11 +372,32 @@
   margin-left: auto;
 }
 
+/* Separates the primary Boards/Inbox nav from the project-list groups below
+   it — same values as `sovereign-plugin-shopper`'s own sidebar divider
+   (`Sidebar.module.css`'s `.divider`), reused for visual consistency
+   between the two plugins' sidebars. */
+.sidebarDivider {
+  margin: var(--sv-space-2) var(--sv-space-4);
+  border-top: 1px solid var(--sv-color-border);
+}
+
 .sidebarGroup {
   display: flex;
   flex-direction: column;
   gap: var(--sv-space-1);
   margin-top: var(--sv-space-4);
+}
+
+/* Zeroes .sidebarGroup's own margin-top for "My projects" specifically —
+   `.sidebarDivider`'s own margin already provides the space above it now,
+   so the two stacked (sidebar's flex `gap` + divider's `margin-bottom` +
+   this group's `margin-top`) made the space below the divider read
+   noticeably larger than the space above it (caught live, developer
+   screenshot). "Shared with me" (the second .sidebarGroup, no divider
+   above it) keeps the plain margin-top unchanged — it still needs it to
+   separate from "My projects" above it. */
+.sidebarGroupAfterDivider {
+  margin-top: 0;
 }
 
 .sidebarGroupHeader {
@@ -396,44 +442,6 @@
   color: var(--sv-color-text-primary);
 }
 
-.sidebarProjectRow {
-  position: relative;
-}
-
-.sidebarRowActions {
-  position: absolute;
-  right: var(--sv-space-2);
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.1s ease;
-}
-
-.sidebarProjectRow:hover .sidebarRowActions,
-.sidebarProjectRow:focus-within .sidebarRowActions {
-  opacity: 1;
-}
-
-.sidebarRowAction {
-  all: unset;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--sv-radius-sm);
-  color: var(--sv-color-text-subtle);
-  cursor: pointer;
-  background: var(--sv-color-surface);
-}
-
-.sidebarRowAction:hover {
-  background: var(--sv-color-surface-sunken);
-  color: var(--sv-color-text-primary);
-}
-
 @media (max-width: 768px) {
   .sidebar {
     display: none;
@@ -441,6 +449,37 @@
 }
 
 /* --- Home: project sections ---------------------------------------------- */
+
+/* "My projects" / "Shared with me" — mirrors KanbanSidebar's own grouping
+   (role === 'owner' vs not), same precedent as sovereign-plugin-shopper's
+   sidebar split, applied to the main listing too rather than only the
+   sidebar (developer-requested). */
+.projectGroup {
+  margin-top: var(--sv-space-8);
+}
+
+/* Pulls the first group's heading up to align with the sidebar's own first
+   link ("Boards") — `PageContainer`'s own top padding (`padding="md"`
+   default, --sv-space-8 = 32px) is double `.sidebar`'s (--sv-space-4 =
+   16px), so without this the first heading sits ~35px lower than "Boards"
+   (measured live via getBoundingClientRect, caught from a developer
+   screenshot). Compensated here, not on `PageContainer` itself — that's a
+   shared component used across the whole platform, this alignment concern
+   is specific to this one page's two-column layout. Lives on `.projectGroup`
+   now, not `.projectSection` — introducing the group wrapper means
+   `.projectSection:first-of-type` now correctly matches the first section
+   *within each group* instead of the first section on the whole page. */
+.projectGroup:first-of-type {
+  margin-top: calc(-1 * var(--sv-space-6));
+}
+
+.projectGroupLabel {
+  margin-bottom: var(--sv-space-4);
+}
+
+.projectGroupEmpty {
+  color: var(--sv-color-text-subtle);
+}
 
 .projectSection {
   margin-top: var(--sv-space-8);
@@ -452,9 +491,47 @@
 
 .projectHeader {
   display: flex;
-  align-items: baseline;
-  gap: var(--sv-space-3);
+  /* `center`, not `baseline` — baseline suited the plain name/caption
+     Typography pair, but reads oddly once a padded Button sits between
+     them (caught live, developer-inspected via devtools). */
+  align-items: center;
+  /* space-2, not space-3 — tighter row rhythm, tuned together with
+     .projectManageButton's own negative-margin compensation below so the
+     *visible* gap around the button glyph lands close to the row's other
+     gaps rather than double it (caught live, developer-inspected). */
+  gap: var(--sv-space-2);
   margin-bottom: var(--sv-space-4);
+}
+
+/* Manage-project CTA, sits right after the project name in .projectHeader's
+   flex row — the single entry point into ManageProjectDialog, replacing the
+   sidebar's previous separate Edit/Delete/Share icons. Reuses the DS's real
+   `Button` (variant="ghost" size="sm" + icon-only), the exact idiom
+   BoardView's own "Board options" trigger already establishes — no bespoke
+   button styling beyond spacing/hover overrides below.
+
+   The negative margins cancel ghost `Button`'s own horizontal padding
+   (`--sv-space-3`) on both sides — the same illusion `.boardOptionsMenu`
+   already documents: `.projectHeader`'s `gap` alone reads visually wrong
+   once a padded button sits between two plain Typography elements, since
+   the *glyph* is inset a further space-3 inside its own invisible button
+   box. Without this, the name→icon and icon→caption gaps both read
+   noticeably wider than the row's other gaps. */
+.projectManageButton {
+  margin-left: calc(-1 * var(--sv-space-3));
+  margin-right: calc(-1 * var(--sv-space-3));
+}
+
+/* `:hover:not(:disabled)` + `!important` to win over ghost `Button`'s own
+   `.ghost:hover:not(:disabled)` rule — same cascade-order quirk
+   `.addListCard`'s own `!important` use documents elsewhere in this file:
+   `@sovereignfs/ui` components append the caller's `className` after their
+   own variant class in the class list, but this build's actual CSS
+   injection order puts the design system's stylesheet after this plugin's,
+   so a plain override loses. Kept fully transparent on hover, deliberately
+   (developer-requested) — no hover chrome at all for this trigger. */
+.projectManageButton:hover:not(:disabled) {
+  background-color: transparent !important;
 }
 
 .projectGrid {
@@ -510,11 +587,25 @@
   padding: var(--sv-space-3) var(--sv-space-4);
 }
 
+/* Board name uses `Typography variant="h4"` for sizing, but h1–h4 all
+   share the DS's semibold weight — a bold name reads too heavy for a
+   small board tile. `!important` needed to win over the `.h4` variant
+   class: same injection-order precedent as `.newBoardCard` above
+   (`@sovereignfs/ui`'s stylesheet loads after the plugin's, so equal
+   specificity favors the DS rule regardless of source order otherwise). */
+.boardCardName {
+  font-weight: var(--sv-font-weight-regular) !important;
+}
+
 .newBoardCard {
   min-height: 88px;
   width: 100%;
-  border: 1px dashed var(--sv-color-border-strong);
-  border-radius: var(--sv-radius-lg);
+  /* `!important` needed to win over `Button`'s own base `border: 1px solid
+     transparent` — same CSS-injection-order precedent as `.addListCard`
+     (`@sovereignfs/ui`'s stylesheet loads after the plugin's, so equal
+     specificity favors the DS rule regardless of source order otherwise). */
+  border: 1px dashed var(--sv-color-border-strong) !important;
+  border-radius: var(--sv-radius-lg) !important;
 }
 
 /* --- Dialog internals ----------------------------------------------------- */
@@ -523,6 +614,40 @@
   display: flex;
   flex-direction: column;
   gap: var(--sv-space-4);
+}
+
+/* Pins a dialog's own title in view while `Dialog`'s `.content` (the
+   actual scroll boundary — see packages/ui's own Dialog.module.css)
+   scrolls long content underneath it — `ManageProjectDialog`'s
+   name/visibility/members/danger-zone stack, `BoardShareDialog`'s member
+   list + candidate picker. Shared by both (hence the generic name, not
+   `manageProjectDialogHeader`) — same problem, same fix, no reason to
+   duplicate it. `top` is the *negative* of `.content`'s own padding
+   (`--sv-space-6`), not 0 — sticky's offset is measured against the
+   scroll container's padding box, so it has to cancel that padding for
+   the header to actually reach the container's real top edge once
+   scrolled, matching the `margin`/`padding` swap below that bleeds this
+   element out to the panel's edges and restores the same visual inset
+   from the inside. Same recipe as `.boardToolbar`'s own sticky header
+   (`position: sticky; top: 0`) one level up — that one doesn't need the
+   margin/top-offset trick because its scroll container (`.body`) isn't
+   padded. */
+.dialogStickyHeader {
+  position: sticky;
+  top: calc(-1 * var(--sv-space-6));
+  /* 0, not 1 — `Dialog`'s own `.close` button (packages/ui) is a sibling
+     of `.content` at the `.panel` stacking context, with its own explicit
+     `z-index: 1`. This header only needs to clear the *unpositioned*
+     scrolling content behind it (z-index: 0 already paints above
+     `z-index: auto` static content), not `.close` — giving it the same
+     `z-index: 1` tied the stacking order, and since this header paints
+     later in the DOM than `.close`, it won the tie and covered the close
+     button entirely. */
+  z-index: 0;
+  margin: calc(-1 * var(--sv-space-6)) calc(-1 * var(--sv-space-6)) 0;
+  padding: var(--sv-space-6) var(--sv-space-6) var(--sv-space-4);
+  background: var(--sv-color-surface-raised);
+  border-bottom: 1px solid var(--sv-color-border);
 }
 
 .dialogActions {
@@ -768,22 +893,60 @@
   /* Cancels two stacked insets so the ellipsis *glyph* itself — not just
      its invisible button box — lines up with the account avatar directly
      above it in `.header` (caught live: without this, the glyph sat
-     noticeably left of the avatar's own right edge). Ghost `Button`'s own
-     horizontal padding (`--sv-space-3`) insets the icon from the button's
-     edge; `.boardToolbar`'s wider padding (`--sv-space-8`) vs `.header`'s
-     narrower one (`--sv-space-4`) offsets the button's edge itself from
-     where the avatar sits. */
-  margin-right: calc(-1 * (var(--sv-space-8) - var(--sv-space-4) + var(--sv-space-3)));
-  /* Cancels the *other* side of that same ghost `Button` padding — without
-     this, the flex `gap` before this item (8px, matching every other gap in
-     `.boardHeaderActions`) was structurally correct but visually wrong: the
-     glyph itself sat a further `--sv-space-3` (12px) inside its own
-     invisible button box, so the *visible* gap after Share (~21px, measured
-     live) read noticeably bigger than the one before it (8px) even though
-     both were the same `gap` value. Share has no equivalent illusion — it's
-     a bordered, opaque button, so its own box edge already *is* its visible
-     edge. */
-  margin-left: calc(-1 * var(--sv-space-3));
+     noticeably left of the avatar's own right edge). `.boardOptionsTrigger`'s
+     own reduced horizontal padding (`--sv-space-1`, not the ghost `Button`
+     default `--sv-space-3` — see its own comment) insets the icon from the
+     button's edge; `.boardToolbar`'s wider padding (`--sv-space-8`) vs
+     `.header`'s narrower one (`--sv-space-4`) offsets the button's edge
+     itself from where the avatar sits. */
+  margin-right: calc(-1 * (var(--sv-space-8) - var(--sv-space-4) + var(--sv-space-1)));
+  /* Shifts the trigger left by exactly its own (now-reduced) padding, same
+     reasoning as `margin-right` above but for the Share-side gap: without
+     this, glyph.left = Share.right + gap(8) + padding(4) = Share.right + 12,
+     a hair wider than the row's other 8px gaps. `-4` (not `-12`, the ghost
+     `Button` default) is deliberately *smaller than the flex gap itself*
+     (8px) — see `.boardOptionsTrigger`'s comment for why that headroom is
+     the whole point. */
+  margin-left: calc(-1 * var(--sv-space-1));
+}
+
+/* Targets the trigger `Button` itself (it takes a real `className`, unlike
+   `Popover`'s own root — see `.boardOptionsMenu`'s comment above, which is
+   about *that* wrapper, not this button). Shrinks the ghost `Button`
+   default horizontal padding (`--sv-space-3`, 12px) down to `--sv-space-1`
+   (4px) on *both* sides — kept symmetric deliberately, not zeroed on just
+   the left, so the hover/pressed highlight (sized to this box) stays
+   centered on the glyph instead of hugging one edge.
+
+   Combined with `.boardOptionsMenu`'s matching `margin-left: calc(-1 *
+   var(--sv-space-1))` above, this lands the glyph exactly `gap` (8px) from
+   Share's edge — `box.left = Share.right + gap(8) − margin(4) =
+   Share.right + 4`; `glyph.left = box.left + padding(4) = Share.right + 8`
+   — while the box's own left edge still sits a real 4px clear of Share's,
+   never overlapping it, because the margin shift (4px) was chosen to be
+   *smaller than* the flex `gap` (8px) it's shifting into, not equal to the
+   button's full padding like the two earlier attempts both were.
+
+   Two earlier attempts, in order: (1) `margin-left:
+   calc(-1 * var(--sv-space-3))` on `.boardOptionsMenu`, canceling the
+   *default* 12px padding exactly — put the glyph in the right place, but
+   since 12px padding > 8px gap, the box's left edge necessarily overshot
+   4px into Share's own box (confirmed via `getBoundingClientRect()`: on
+   hover, the ellipsis's background visibly painted over Share's rounded
+   corner — developer-reported from a screenshot). (2) Zeroing just
+   `padding-left` (keeping `padding-right` at the default 12px) fixed the
+   overlap — box.left stayed at `Share.right + gap`, never past it — but
+   left the button's own padding asymmetric (0 left, 12px right), so the
+   hover highlight sat flush against the icon's left edge and ballooned out
+   on its right — developer-reported, from a real screenshot, as
+   "unbalanced". This third version is the one that satisfies all three
+   constraints together: exact gap match, zero box overlap, *and* symmetric
+   padding — provable in general as `padding ≤ gap` (here 4 ≤ 8), the
+   necessary condition for a margin shift equal to the padding to still
+   leave the box clear of its neighbor. */
+.boardOptionsTrigger {
+  padding-left: var(--sv-space-1) !important;
+  padding-right: var(--sv-space-1) !important;
 }
 
 .memberAvatarStack {
@@ -804,16 +967,17 @@
   color: var(--sv-color-text-primary) !important;
 }
 
-/* 28px — a step up from Avatar's own `sm` (24px), reads better as a small
-   cluster of distinct people rather than a single decorative row. `sm` is
-   still the closest built-in preset (`md` at 32px reads too big packed this
-   tightly); the extra 4px and matching font bump are a plain size override.
-   `!important` required on all three — same cascade-order quirk as
-   `.memberAvatar`'s own comment above. */
+/* Uses `Avatar`'s own built-in `md` preset (32px) now — no size override
+   needed. Previously a hand-tuned 28px between `sm`/`md` ("`md` reads too
+   big packed this tightly"), but that was reasoned against a *dense* stack
+   (every board member, however many). Since `MemberAvatarStack` now
+   returns `null` below 2 members, the case that made 32px feel cramped
+   (many avatars, always visible) no longer exists — the stack only ever
+   renders for boards that genuinely have other people on them, so the
+   bigger, plainer built-in size reads better (developer feedback: the
+   28px circles didn't read as cleanly circular next to the overlap cutout
+   below; more radius makes that cutout proportionally smaller). */
 .stackedAvatar {
-  width: 28px !important;
-  height: 28px !important;
-  font-size: var(--sv-font-size-xs) !important;
   margin-left: calc(var(--sv-space-2) * -1);
   /* Matches the toolbar's own surface behind it (`.boardToolbar`'s own
      `--sv-color-surface-sunken`), so the separator ring between overlapping
@@ -832,9 +996,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Matches `.stackedAvatar`'s own 28px bump — see its comment above. */
-  width: 28px;
-  height: 28px;
+  /* Matches `Avatar`'s own `md` preset (32px), same as `.stackedAvatar`
+     above now uses directly. */
+  width: 32px;
+  height: 32px;
   margin-left: calc(var(--sv-space-2) * -1);
   border-radius: var(--sv-radius-full);
   /* Own surface distinct from the toolbar behind it (a plain, non-sunken
@@ -848,6 +1013,25 @@
 }
 
 /* --- Share dialog (K.9) ----------------------------------------------------- */
+
+.boardUrlRow {
+  display: flex;
+  gap: var(--sv-space-2);
+  padding-bottom: var(--sv-space-3);
+  border-bottom: 1px solid var(--sv-color-border);
+}
+
+/* The read-only URL field takes all the width the "Copy" button doesn't
+   need — `Input` has no `flex` of its own since it's meant to size to its
+   container everywhere else it's used. */
+.boardUrlRow > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.boardUrlRow > button {
+  flex-shrink: 0;
+}
 
 .memberList {
   display: flex;
@@ -873,6 +1057,16 @@
 
 .memberRoleBadge {
   color: var(--sv-color-text-muted);
+}
+
+/* Project share dialog (K.19) — owner rows get two management actions
+   (promote/demote + remove) where the board share dialog (K.9) only ever
+   needed one, since a board has never had a promote-to-owner UI. */
+.memberRowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-1);
+  flex-shrink: 0;
 }
 
 .memberPicker {
@@ -905,8 +1099,71 @@
   text-align: left;
 }
 
+/* ManageProjectDialog — one section per concern (details, members, danger
+   zone), each separated by a divider except the first. */
+.manageSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-3);
+}
+
+.manageSection + .manageSection {
+  padding-top: var(--sv-space-4);
+  border-top: 1px solid var(--sv-color-border);
+}
+
+.manageSectionHeader {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sv-space-2);
+}
+
+.dangerZoneLabel {
+  color: var(--sv-color-error-text);
+}
+
+.dangerZoneBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sv-space-3);
+  padding: var(--sv-space-3);
+  background: var(--sv-color-error-surface);
+  /* `--sv-color-error-solid` (a saturated red, normally reserved for solid
+     error surfaces/icons) instead of the pale `--sv-color-error-border` —
+     developer feedback that the pale border read as barely red at all
+     against the already-pale fill. */
+  border: 1px solid var(--sv-color-error-solid);
+  border-radius: var(--sv-radius-md);
+}
+
 .memberResultRow:hover {
   background: var(--sv-color-surface-sunken);
+}
+
+.memberResultStatus {
+  color: var(--sv-color-text-muted);
+  padding: var(--sv-space-1) var(--sv-space-2);
+}
+
+/* `SegmentedControl`'s track is `display: inline-flex` (shrink-to-fit by
+   design), but `FormField`'s `.field` wrapper is a flex column with the
+   default `align-items: stretch` — stretching the track to the field's
+   full width regardless of its own display type, leaving a large empty
+   gap between the two pills. `align-items: flex-start` on this specific
+   field reverts it to its intrinsic, content-hugging width. */
+.visibilityField {
+  align-items: flex-start;
+}
+
+/* Same root cause as `.visibilityField` above, one level up: `.manageSection`
+   is also a flex column with default `align-items: stretch`, which stretches
+   `Button`'s own `inline-flex` box (see Button.module.css) to the form's
+   full width. `align-self` (not the parent's `align-items`, since the other
+   fields in this form — Name, Description — legitimately need to stay full
+   width) reverts just this button to its intrinsic width. */
+.saveProjectButton {
+  align-self: flex-start;
 }
 
 /* --- Board search / filter (K.10) ------------------------------------------ */
@@ -1122,6 +1379,25 @@
   color: var(--sv-color-text-muted);
 }
 
+/* Checklist-only addition on top of `.addCardTrigger` above (shared with
+   `QuickAddCard`'s list-footer "+ Add a card" trigger, deliberately left
+   untouched — this class doesn't replace it, just adds to it) — the same
+   dashed-border "add new" language as `.newBoardCard`/`.descriptionViewEmpty`,
+   since "+ Add an item" as plain muted text with no visual container read
+   as inert label copy rather than a real, clickable row (developer
+   feedback). `width: 100%` + explicit padding, since `Button`'s own
+   `inline-flex` display otherwise shrinks it to its text's width. */
+.checklistAddTrigger {
+  width: 100%;
+  padding: var(--sv-space-2) var(--sv-space-3) !important;
+  border: 1px dashed var(--sv-color-border-strong) !important;
+  border-radius: var(--sv-radius-md);
+}
+
+.checklistAddTrigger:hover:not(:disabled) {
+  border-color: var(--sv-color-text-muted) !important;
+}
+
 .addCardComposer {
   display: flex;
   flex-direction: column;
@@ -1219,27 +1495,142 @@
 
 /* --- Card detail modal (K.6) ----------------------------------------------- */
 
+/* Pinned header, Trello-reference developer-requested — the title (plus
+   the breadcrumb and delete/close controls beside it) now stays in view
+   while everything below (Labels/Due date/Assignees, Description,
+   Checklist, Comments/Activity) scrolls underneath it, rather than the
+   title scrolling away with the rest of the card. Same sticky-bleed
+   recipe as `.dialogStickyHeader` (`ManageProjectDialog`/`BoardShareDialog`,
+   earlier this session) — `top` cancels `.content`'s own padding so the
+   sticky offset is measured from the real scroll-container edge, and the
+   `margin`/`padding` swap bleeds this row out to the panel's edges and
+   restores the same visual inset from the inside — not reusing that exact
+   class directly since this header also needs its own close-button
+   clearance (see `padding-right` below), which those two dialogs' plain
+   `Typography` titles never needed. */
 .cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sv-space-2);
+  position: sticky;
+  top: calc(-1 * var(--sv-space-6));
+  /* Same reasoning as `.dialogStickyHeader`'s own z-index comment: 0, not
+     1 — only needs to clear the unpositioned content scrolling beneath
+     it, not `Dialog`'s own `.close` button (z-index: 1, `packages/ui`),
+     which must stay on top of this header once they overlap on scroll. */
+  z-index: 0;
+  margin: calc(-1 * var(--sv-space-6)) calc(-1 * var(--sv-space-6)) 0;
+  background: var(--sv-color-surface-raised);
+  border-bottom: 1px solid var(--sv-color-border);
+  /* Left/bottom restore `.content`'s own padding now that this row no
+     longer inherits it (bled out via the negative margin above). Right is
+     that same restored padding *plus* `--sv-space-5` clearing `.close`'s
+     own footprint — previously an addition on top of inherited content
+     padding when this row was a plain in-flow child; now supplied in
+     full, since bleeding out means nothing is inherited anymore.
+
+     Top is deliberately *not* the same restored `--sv-space-6` — first
+     attempt used it, reasoning that bleeding to the panel's real top edge
+     and restoring the same inset would land the title at `.close`'s own
+     vertical center "as a side effect," with no separate alignment hack
+     needed. Live-tested wrong: `getBoundingClientRect()` after switching
+     to this sticky layout showed the *same* 16px delta between the
+     title's center and `.close`'s center that motivated the original
+     (pre-sticky) `margin-top` hack — bleeding to the edge changes where
+     the row's *box* starts, not the relationship between its own
+     center and the independently-positioned close button, so the old
+     delta carried over unchanged. `--sv-space-1` (4px) closes it —
+     re-verified live: title/delete-button/close-button centers match
+     exactly. Originally `--sv-space-2` (8px), reduced by one step after
+     `.cardTitleInput`'s own vertical padding grew (developer-requested,
+     "title field can be a bit longer"), which grew the header row's own
+     height and pushed every child's center down relative to this fixed
+     sticky top — re-measured live rather than assumed. */
+  padding: var(--sv-space-1) calc(var(--sv-space-6) + var(--sv-space-5)) var(--sv-space-4)
+    var(--sv-space-6);
+}
+
+/* Mobile equivalent — base layout only, none of `.cardHeader`'s sticky/
+   bleed/close-clearance treatment (see `CardDetailOverlay.tsx`'s own
+   comment on the two-class split for why: mobile already has a
+   permanently-pinned title via `Dialog`'s mobile `OverlayHeader`, and
+   never had a floating `.close` button to clear in the first place). A
+   perfectly ordinary in-flow flex row, same as `.cardHeader` was before
+   this session's sticky-header change. */
+.cardHeaderMobile {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sv-space-2);
 }
 
+/* `Input`'s own base rule sets `width: 100%` unconditionally — as a flex
+   item, that computed a 100%-of-container flex-basis that fought this
+   row's `flex: 1 1 auto` sizing and claimed the entire row width for
+   itself, wrapping the ellipsis `Button` beside it onto its own line
+   (visible live: the row grew to two lines, throwing off every alignment
+   downstream). `width: auto` lets `flex: 1 1 auto` govern sizing the way
+   it does for every other flex-embedded control in this file;
+   `min-width: 0` is the standard companion fix so the text input can still
+   shrink below its content's intrinsic width instead of overflowing the
+   row. Border/background removed by default so the title reads as a
+   heading, not a form field, restored only on hover/focus (an inline-edit
+   affordance, not a permanently-boxed control) — `!important` needed on
+   all of these, same DS-injection-order reasoning documented throughout
+   this file. */
 .cardTitleInput {
+  /* Developer-requested: "a bit longer" — the breadcrumb that used to share
+     this row is gone (removed in the same pass), so the field now has the
+     full row to itself next to just the delete button; taken as a request
+     for a taller, more prominent field to fill that space rather than a
+     wider one (it was already flex: 1 1 auto, i.e. already as wide as the
+     row allows). */
   flex: 1 1 auto;
-  font-size: var(--sv-font-size-lg);
-  font-weight: 600;
+  width: auto !important;
+  min-width: 0;
+  height: auto !important;
+  padding: var(--sv-space-2) var(--sv-space-2) !important;
+  font-size: var(--sv-font-size-xl) !important;
+  font-weight: var(--sv-font-weight-semibold);
+  border-color: transparent !important;
+  background: transparent !important;
 }
 
-.cardBreadcrumb {
-  flex: 0 0 100%;
+.cardTitleInput:hover:not(:disabled) {
+  border-color: var(--sv-color-border) !important;
+}
+
+.cardTitleInput:focus-visible {
+  background: var(--sv-color-surface) !important;
 }
 
 .cardSection {
   display: flex;
   flex-direction: column;
   gap: var(--sv-space-2);
+}
+
+/* Wraps `CardLabels`/`CardDueDate`/`CardAssignees` (each still its own
+   `.cardSection`) into one row instead of three stacked full-width blocks
+   — see `CardDetailOverlay.tsx`'s own comment. `flex: 1 1 12rem` gives
+   each field a reasonable minimum before wrapping (three columns on the
+   `xl` dialog's full 48rem width, gracefully collapsing to fewer as the
+   dialog narrows — mobile's `full` size has plenty of width for this too,
+   no separate mobile-specific stacking needed). The border-bottom +
+   padding-bottom mark the metadata/content boundary the previous uniform
+   stack had no visual break for. */
+.cardMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sv-space-5) var(--sv-space-6);
+  padding-bottom: var(--sv-space-5);
+  border-bottom: 1px solid var(--sv-color-border);
+}
+
+.cardMetaRow > * {
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .cardSectionHeader {
@@ -1253,6 +1644,15 @@
    rather than unmounted via conditional rendering. */
 .tabPanelHidden {
   display: none;
+}
+
+/* Reserves roughly "a few comments" or "a few activity lines" worth of
+   height so switching tabs doesn't visibly resize the dialog — see
+   `CardCommentsActivity`'s own comment for why. A floor, not a fixed
+   height: content taller than this still grows the panel (and the dialog
+   with it, up to its own size cap) normally. */
+.cardTabPanels {
+  min-height: 14rem;
 }
 
 .labelChipRow,
@@ -1273,12 +1673,29 @@
   color: var(--sv-color-text-primary);
 }
 
+/* Icon-only add trigger, shown once the row already has at least one real
+   chip/avatar to sit beside — that existing content is what establishes
+   "this row is a collection you can add to," so a plain icon suffices
+   without needing its own emphasis. Previously a dashed-border circle
+   regardless of whether the row was empty or populated — developer
+   feedback that the dashed style specifically read as a disabled/
+   placeholder region rather than a real button (the same dashed language
+   this codebase otherwise reserves for full "+ Add list"/"+ New board"
+   cards, never for a bare unlabeled icon). No border override at all now
+   — matches every other icon-only ghost `Button` in this codebase
+   (transparent at rest, background only on hover). */
 .chipAddButton {
   border-radius: var(--sv-radius-full);
   padding: 0;
   width: var(--sv-space-6);
   height: var(--sv-space-6);
-  border: 1px dashed var(--sv-color-border-strong);
+}
+
+/* Shown instead of `.chipAddButton` when the row is still empty — a real
+   text CTA ("+ Add label"/"+ Add assignee"), unambiguous even with nothing
+   else in the row to give it context. */
+.chipAddTextButton {
+  color: var(--sv-color-text-muted);
 }
 
 .labelPicker {
@@ -1364,6 +1781,23 @@
   border-color: var(--sv-color-border);
 }
 
+/* A real description reads as filled-in content on a normal sunken card
+   (above); an *empty* one is an invitation, not a document — a filled
+   grey box for "nothing here yet" read as a disabled field (developer
+   feedback), so this state instead uses the same dashed-border language
+   as this codebase's other "add new" surfaces (`.newBoardCard`, the
+   checklist composer trigger below), just without their bigger
+   min-height — a single line of placeholder text doesn't need one. */
+.descriptionViewEmpty {
+  background: transparent;
+  border: 1px dashed var(--sv-color-border-strong);
+}
+
+.descriptionViewEmpty:hover {
+  background: var(--sv-color-surface-sunken);
+  border-color: var(--sv-color-border-strong);
+}
+
 .descriptionPlaceholder {
   color: var(--sv-color-text-muted);
 }
@@ -1391,6 +1825,16 @@
   flex-direction: column;
   gap: var(--sv-space-1);
   min-width: 0;
+}
+
+/* Preserves the newlines a comment was actually typed with — plain text
+   nodes default to `white-space: normal`, which collapses every `\n` in
+   `comment.body` to a single space, same bug class the card description
+   fix (`Markdown`'s new `preserveLineBreaks` prop) addresses one level up.
+   `pre-wrap` (not `pre`) still wraps long lines normally, it just stops
+   collapsing the real ones. */
+.commentText {
+  white-space: pre-wrap;
 }
 
 .commentMeta {

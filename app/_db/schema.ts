@@ -33,6 +33,14 @@ export const projects = sqliteTable(
     name: text('name').notNull(),
     description: text('description'),
     createdBy: text('created_by').notNull(),
+    /**
+     * 'public' | 'private' (Phase 2, K.17). Enforced in the data layer, not
+     * the schema. 'public': a board's own `visibility` governs who among
+     * project members can view it. 'private': overrides every board's own
+     * flag — only that board's own members and the project's owners can
+     * view any board in the project. See CONCEPT.md's "Phase 2" section.
+     */
+    visibility: text('visibility').notNull().default('public'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -50,6 +58,14 @@ export const boards = sqliteTable(
     name: text('name').notNull(),
     color: text('color').notNull(),
     createdBy: text('created_by').notNull(),
+    /**
+     * 'public' | 'private' (Phase 2, K.17). Only consulted when the parent
+     * project is 'public' — a 'private' project overrides this regardless
+     * of value. 'public': any project member can view (read-only unless
+     * also an explicit board member). 'private': only this board's own
+     * members and the project's owners can view it.
+     */
+    visibility: text('visibility').notNull().default('public'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -72,6 +88,34 @@ export const boardMembers = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.boardId, t.userId] }),
     index('kanban_board_members_user_idx').on(t.userId),
+  ],
+);
+
+/**
+ * Project-level membership (Phase 2, K.17) — sits above `boardMembers`, not
+ * a replacement for it. A project supports multiple 'owner' rows (unlike
+ * the single `projects.createdBy` field, which stays a historical "who
+ * created this" marker; ownership authority lives here). Board-add UI
+ * (K.20) sources its candidate list from this table, never a fresh
+ * directory search — someone must be a project member before they can be
+ * added to any of its boards. See CONCEPT.md's "Phase 2" section.
+ */
+export const projectMembers = sqliteTable(
+  'kanban_project_members',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    tenantId: text('tenant_id').notNull(),
+    /** 'owner' | 'member' — enforced in the data layer, not the schema. */
+    role: text('role').notNull(),
+    addedBy: text('added_by').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.projectId, t.userId] }),
+    index('kanban_project_members_user_idx').on(t.userId),
   ],
 );
 

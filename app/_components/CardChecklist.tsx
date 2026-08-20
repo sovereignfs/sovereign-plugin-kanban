@@ -156,7 +156,11 @@ function ChecklistComposer({
 
   if (!open) {
     return (
-      <Button variant="ghost" className={styles.addCardTrigger} onClick={() => setOpen(true)}>
+      <Button
+        variant="ghost"
+        className={`${styles.addCardTrigger} ${styles.checklistAddTrigger}`}
+        onClick={() => setOpen(true)}
+      >
         + Add an item
       </Button>
     );

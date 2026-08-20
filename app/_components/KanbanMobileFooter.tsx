@@ -40,7 +40,7 @@ export function KanbanMobileFooter({
   const [appsOpen, setAppsOpen] = useState(false);
   const isMobile = useIsMobile();
 
-  const isBoards = pathname === '/kanban' || pathname.startsWith('/kanban/boards');
+  const isBoards = pathname === '/kanban' || pathname.startsWith('/kanban/b');
   const isInbox = pathname.startsWith('/kanban/inbox');
 
   // `useIsMobile` defaults to `false` until the client mounts and reads the

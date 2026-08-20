@@ -1,13 +1,8 @@
 'use client';
 
-import { useActionState, useState, useTransition } from 'react';
-import { ConfirmDialog, Dialog, FormField, Icon, Input, Textarea, Typography } from '@sovereignfs/ui';
-import {
-  createBoardForm,
-  createProjectForm,
-  deleteProject,
-  updateProjectForm,
-} from '../actions';
+import { useActionState, useState } from 'react';
+import { Dialog, FormField, Icon, Input, Textarea, Typography } from '@sovereignfs/ui';
+import { createBoardForm, createProjectForm } from '../actions';
 import { BOARD_COLOR_NONE, BOARD_COLORS, DEFAULT_BOARD_COLOR } from '../_lib/palette';
 import type { HomeProject } from '../_lib/queries';
 import styles from '../kanban.module.css';
@@ -42,49 +37,6 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
           onCancel={onClose}
           submitLabel="Create project"
           pendingLabel="Creating…"
-          pending={pending}
-        />
-      </form>
-    </Dialog>
-  );
-}
-
-export function EditProjectDialog({
-  project,
-  onClose,
-}: {
-  project: HomeProject;
-  onClose: () => void;
-}) {
-  const [state, formAction, pending] = useActionState(updateProjectForm, null);
-  useCloseOnSuccess(state, onClose);
-
-  return (
-    <Dialog open onClose={onClose} size="sm" title="Edit project" aria-label="Edit project">
-      <form action={formAction} className={styles.dialogBody}>
-        <Typography variant="h3">Edit project</Typography>
-        <input type="hidden" name="projectId" value={project.id} />
-        <FormField label="Name" required>
-          {(field) => (
-            <Input {...field} name="name" defaultValue={project.name} disabled={pending} />
-          )}
-        </FormField>
-        <FormField label="Description" hint="Optional">
-          {(field) => (
-            <Textarea
-              {...field}
-              name="description"
-              rows={3}
-              defaultValue={project.description ?? ''}
-              disabled={pending}
-            />
-          )}
-        </FormField>
-        {state && !state.ok && <p className={styles.formError}>{state.error}</p>}
-        <DialogActions
-          onCancel={onClose}
-          submitLabel="Save changes"
-          pendingLabel="Saving…"
           pending={pending}
         />
       </form>
@@ -171,46 +123,5 @@ export function NewBoardDialog({
         />
       </form>
     </Dialog>
-  );
-}
-
-export function DeleteProjectConfirm({
-  project,
-  onClose,
-}: {
-  project: HomeProject;
-  onClose: () => void;
-}) {
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const boardCount = project.boards.length;
-
-  return (
-    <ConfirmDialog
-      open
-      onClose={onClose}
-      title={`Delete "${project.name}"?`}
-      message={
-        <>
-          This deletes the project{' '}
-          {boardCount > 0
-            ? `and its ${boardCount === 1 ? 'board' : `${boardCount} boards`}, including every list, card, and comment on them. `
-            : 'permanently. '}
-          This can&apos;t be undone.
-        </>
-      }
-      destructive
-      confirmLabel={pending ? 'Deleting…' : 'Delete project'}
-      pending={pending}
-      error={error}
-      onConfirm={() => {
-        setError(null);
-        startTransition(async () => {
-          const result = await deleteProject({ projectId: project.id });
-          if (result.ok) onClose();
-          else setError(result.error);
-        });
-      }}
-    />
   );
 }

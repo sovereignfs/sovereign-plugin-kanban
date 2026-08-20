@@ -65,8 +65,9 @@ export function CardActivity({
 
   return (
     <section className={styles.cardSection}>
-      <Typography variant="label">Activity</Typography>
-
+      {/* No "Activity" label here — the tab strip above (`CardCommentsActivity`)
+          already names this section on both surfaces now; a second label
+          directly under an already-selected tab was pure duplication. */}
       {items.length === 0 ? (
         <Typography variant="caption" className={styles.descriptionPlaceholder}>
           No activity yet.

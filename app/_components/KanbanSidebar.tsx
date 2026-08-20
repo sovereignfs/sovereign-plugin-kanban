@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Icon, Typography } from '@sovereignfs/ui';
 import type { HomeProject } from '../_lib/queries';
 import styles from '../kanban.module.css';
-import { DeleteProjectConfirm, EditProjectDialog, NewProjectDialog } from './HomeDialogs';
+import { NewProjectDialog } from './HomeDialogs';
 
 /** Plugin-local secondary nav (same precedent as Console's section nav). */
 const NAV = [
@@ -21,18 +21,20 @@ const NAV = [
  * on every page, so it doesn't need to be duplicated here too.
  *
  * Below the Boards/Inbox nav, `projects` is split into "My projects"
- * (`isCreator`) and "Shared with me" (everything else) — same precedent as
- * `sovereign-plugin-shopper`'s own sidebar ("My lists" header + "+" button,
- * hover-reveal pencil/trash per row). Each project links to its own
- * anchored section on the Home page (`#project-<id>`, `HomeView.tsx`'s
- * `ProjectSection`) rather than a dedicated per-project route, since Kanban
- * doesn't have one.
+ * (`role === 'owner'`) and "Shared with me" (`role === 'member'`) — same
+ * precedent as `sovereign-plugin-shopper`'s own sidebar. Grouped by
+ * `kanban_project_members` role (K.18/K.19), not `isCreator` — a project
+ * supports co-owners. Each project links to its own anchored section on the
+ * Home page (`#project-<id>`, `HomeView.tsx`'s `ProjectSection`) rather
+ * than a dedicated per-project route, since Kanban doesn't have one.
  *
- * New/edit/delete dialogs are owned entirely here, independent of
- * `HomeView` — every project mutation's server action calls
- * `revalidatePath('/kanban', 'layout')` (`actions.ts`'s `refresh()`), which
- * covers this sidebar's own layout-level data fetch too, so there's no need
- * to thread state between the two sibling trees.
+ * Rows are plain links, no per-row icons — a previous iteration had
+ * hover-reveal Share/Edit/Delete icons here, but they became a second,
+ * inconsistent entry point once `HomeView`'s project header grew a single
+ * combined "Manage" affordance (settings gear, covering edit + share +
+ * delete). That gear icon is now the only project-management entry point;
+ * the sidebar is pure navigation. Only "New project" (the "+" button) still
+ * lives here, since it isn't a per-project action.
  */
 export function KanbanSidebar({
   hasUnseenInbox,
@@ -43,17 +45,15 @@ export function KanbanSidebar({
 }) {
   const pathname = usePathname();
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const [editing, setEditing] = useState<HomeProject | null>(null);
-  const [deleting, setDeleting] = useState<HomeProject | null>(null);
-  const myProjects = projects.filter((p) => p.isCreator);
-  const sharedProjects = projects.filter((p) => !p.isCreator);
+  const myProjects = projects.filter((p) => p.role === 'owner');
+  const sharedProjects = projects.filter((p) => p.role !== 'owner');
 
   return (
     <nav className={styles.sidebar} aria-label="Kanban sections">
       {NAV.map((item) => {
         const active =
           item.href === '/kanban'
-            ? pathname === '/kanban' || pathname.startsWith('/kanban/boards')
+            ? pathname === '/kanban' || pathname.startsWith('/kanban/b')
             : pathname.startsWith(item.href);
         const showUnseenBadge = item.href === '/kanban/inbox' && hasUnseenInbox;
         return (
@@ -72,7 +72,9 @@ export function KanbanSidebar({
         );
       })}
 
-      <div className={styles.sidebarGroup}>
+      <div className={styles.sidebarDivider} />
+
+      <div className={`${styles.sidebarGroup} ${styles.sidebarGroupAfterDivider}`}>
         <div className={styles.sidebarGroupHeader}>
           <Typography variant="label" className={styles.sidebarGroupLabel}>
             My projects
@@ -87,29 +89,13 @@ export function KanbanSidebar({
           </button>
         </div>
         {myProjects.map((project) => (
-          <div key={project.id} className={styles.sidebarProjectRow}>
-            <Link href={`/kanban#project-${project.id}`} className={styles.sidebarLink}>
-              {project.name}
-            </Link>
-            <div className={styles.sidebarRowActions}>
-              <button
-                type="button"
-                className={styles.sidebarRowAction}
-                aria-label={`Edit ${project.name}`}
-                onClick={() => setEditing(project)}
-              >
-                <Icon name="pencil" size="sm" aria-hidden={true} />
-              </button>
-              <button
-                type="button"
-                className={styles.sidebarRowAction}
-                aria-label={`Delete ${project.name}`}
-                onClick={() => setDeleting(project)}
-              >
-                <Icon name="trash-2" size="sm" aria-hidden={true} />
-              </button>
-            </div>
-          </div>
+          <Link
+            key={project.id}
+            href={`/kanban#project-${project.id}`}
+            className={styles.sidebarLink}
+          >
+            {project.name}
+          </Link>
         ))}
       </div>
 
@@ -135,16 +121,6 @@ export function KanbanSidebar({
       </div>
 
       <NewProjectDialog open={newProjectOpen} onClose={() => setNewProjectOpen(false)} />
-      {editing && (
-        <EditProjectDialog key={editing.id} project={editing} onClose={() => setEditing(null)} />
-      )}
-      {deleting && (
-        <DeleteProjectConfirm
-          key={deleting.id}
-          project={deleting}
-          onClose={() => setDeleting(null)}
-        />
-      )}
     </nav>
   );
 }

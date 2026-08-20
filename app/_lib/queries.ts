@@ -9,7 +9,7 @@ import { sdk } from '@sovereignfs/sdk';
 import type { KanbanDb } from '../_db/client';
 import * as schema from '../_db/schema';
 import { ACTIVITY_PAGE_SIZE, activityCursorFor, type ActivityCursor } from './activity-pagination';
-import type { Actor } from './authz';
+import { getProjectRole, type Actor } from './authz';
 import type { MemberIdentity } from './identity';
 
 // ---------------------------------------------------------------------------
@@ -20,6 +20,8 @@ export interface HomeBoard {
   name: string;
   color: string;
   projectId: string;
+  /** Phase 2 (K.18) — 'viewer' means read-only access; unused by UI until K.21. */
+  role: 'owner' | 'member' | 'viewer';
 }
 
 export interface HomeProject {
@@ -28,22 +30,108 @@ export interface HomeProject {
   description: string | null;
   createdBy: string;
   isCreator: boolean;
+  /** Phase 2 (K.18) — the actor's own `kanban_project_members` role. */
+  role: 'owner' | 'member';
+  /** Phase 2 (K.18) — 'public' | 'private'; unused by UI until K.19's visibility toggle. */
+  visibility: string;
+  /** Phase 2 (K.19) — every project member, for the share dialog. */
+  members: Array<MemberIdentity & { role: string }>;
   boards: HomeBoard[];
 }
 
 /**
- * Projects the actor created (even when empty) plus every board the actor
- * is a member of, grouped under its project. One round trip's worth of
- * queries, no per-project N+1.
+ * Projects the actor belongs to via `kanban_project_members` (K.18 — this
+ * replaces the old created-by/board-membership-derived sourcing; every
+ * project has an owner row for at least its creator, seeded either by
+ * `createProject` or K.17's migration backfill), each with its boards:
+ * explicit board memberships (edit access, unchanged from Phase 1) plus any
+ * boards the actor can merely view — every board in a project they own, or
+ * public boards in a public project they're a member of. `isCreator` is
+ * untouched from Phase 1 (still `created_by`-derived) — it and project
+ * ownership are equivalent until K.19 adds a promote-to-owner UI, so there's
+ * no behavior change here yet.
  */
 export async function getHomeData(db: KanbanDb, actor: Actor): Promise<HomeProject[]> {
-  const memberBoards = await db
+  const myMemberships = await db
+    .select({ projectId: schema.projectMembers.projectId, role: schema.projectMembers.role })
+    .from(schema.projectMembers)
+    .where(
+      and(
+        eq(schema.projectMembers.userId, actor.userId),
+        eq(schema.projectMembers.tenantId, actor.tenantId),
+      ),
+    );
+  if (myMemberships.length === 0) return [];
+
+  const roleByProject = new Map(
+    myMemberships.map((m) => [m.projectId, m.role === 'owner' ? 'owner' : 'member'] as const),
+  );
+  const projectIds = [...roleByProject.keys()];
+
+  // Sorted in JS via `localeCompare`, not a SQL `orderBy` — SQLite's default
+  // BINARY collation is case-sensitive (every uppercase name would sort
+  // before every lowercase one), and this list is never large enough
+  // (a user's own project count) to need the DB to do the sorting.
+  const projectRows = (
+    await db
+      .select()
+      .from(schema.projects)
+      .where(inArray(schema.projects.id, projectIds))
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Every member of every one of these projects (K.19's share dialog needs
+  // the full list, not just the actor's own row), resolved to directory
+  // identities in one batched call rather than per-project.
+  const allMemberRows = await db
+    .select({
+      projectId: schema.projectMembers.projectId,
+      userId: schema.projectMembers.userId,
+      role: schema.projectMembers.role,
+    })
+    .from(schema.projectMembers)
+    .where(inArray(schema.projectMembers.projectId, projectIds));
+  const memberDirectoryUsers =
+    allMemberRows.length === 0
+      ? []
+      : await sdk.directory.resolveUsers({
+          ids: [...new Set(allMemberRows.map((m) => m.userId))],
+        });
+  const memberDirectoryById = new Map(memberDirectoryUsers.map((u) => [u.id, u]));
+  const membersByProject = new Map<string, Array<MemberIdentity & { role: string }>>();
+  for (const m of allMemberRows) {
+    const list = membersByProject.get(m.projectId) ?? [];
+    list.push({
+      userId: m.userId,
+      role: m.role,
+      name: memberDirectoryById.get(m.userId)?.name ?? null,
+      email: memberDirectoryById.get(m.userId)?.email ?? null,
+      image: memberDirectoryById.get(m.userId)?.image ?? null,
+    });
+    membersByProject.set(m.projectId, list);
+  }
+
+  const result: HomeProject[] = projectRows.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    createdBy: p.createdBy,
+    isCreator: p.createdBy === actor.userId,
+    role: roleByProject.get(p.id) ?? 'member',
+    visibility: p.visibility,
+    members: membersByProject.get(p.id) ?? [],
+    boards: [],
+  }));
+  const projectById = new Map(result.map((p) => [p.id, p]));
+  const seenBoardIds = new Set<string>();
+
+  // Explicit board memberships — edit access, exactly Phase 1's query.
+  const memberBoardRows = await db
     .select({
       id: schema.boards.id,
       name: schema.boards.name,
       color: schema.boards.color,
       projectId: schema.boards.projectId,
-      position: schema.boards.createdAt,
+      role: schema.boardMembers.role,
     })
     .from(schema.boards)
     .innerJoin(
@@ -56,45 +144,55 @@ export async function getHomeData(db: KanbanDb, actor: Actor): Promise<HomeProje
     )
     .orderBy(asc(schema.boards.createdAt));
 
-  const ownProjects = await db
-    .select()
-    .from(schema.projects)
-    .where(
-      and(eq(schema.projects.createdBy, actor.userId), eq(schema.projects.tenantId, actor.tenantId)),
-    )
-    .orderBy(asc(schema.projects.createdAt));
-
-  const otherProjectIds = [
-    ...new Set(
-      memberBoards.map((b) => b.projectId).filter((id) => !ownProjects.some((p) => p.id === id)),
-    ),
-  ];
-  const otherProjects =
-    otherProjectIds.length === 0
-      ? []
-      : await db
-          .select()
-          .from(schema.projects)
-          .where(inArray(schema.projects.id, otherProjectIds))
-          .orderBy(asc(schema.projects.createdAt));
-
-  const result: HomeProject[] = [...ownProjects, ...otherProjects].map((p) => ({
-    id: p.id,
-    name: p.name,
-    description: p.description,
-    createdBy: p.createdBy,
-    isCreator: p.createdBy === actor.userId,
-    boards: [],
-  }));
-  const byId = new Map(result.map((p) => [p.id, p]));
-  for (const b of memberBoards) {
-    byId.get(b.projectId)?.boards.push({
+  for (const b of memberBoardRows) {
+    const project = projectById.get(b.projectId);
+    if (!project) continue;
+    project.boards.push({
       id: b.id,
       name: b.name,
       color: b.color,
       projectId: b.projectId,
+      role: b.role === 'owner' ? 'owner' : 'member',
     });
+    seenBoardIds.add(b.id);
   }
+
+  // Read-only boards: every board in a project the actor owns, or public
+  // boards in a public project the actor is a plain member of. Explicit
+  // memberships above already cover edit access for any of these boards.
+  const ownedProjectIds = projectRows
+    .filter((p) => roleByProject.get(p.id) === 'owner')
+    .map((p) => p.id);
+  const publicMemberProjectIds = projectRows
+    .filter((p) => roleByProject.get(p.id) === 'member' && p.visibility === 'public')
+    .map((p) => p.id);
+  const viewerCandidateProjectIds = [...ownedProjectIds, ...publicMemberProjectIds];
+
+  if (viewerCandidateProjectIds.length > 0) {
+    const candidateBoardRows = await db
+      .select({
+        id: schema.boards.id,
+        name: schema.boards.name,
+        color: schema.boards.color,
+        projectId: schema.boards.projectId,
+        visibility: schema.boards.visibility,
+      })
+      .from(schema.boards)
+      .where(inArray(schema.boards.projectId, viewerCandidateProjectIds))
+      .orderBy(asc(schema.boards.createdAt));
+
+    const ownedProjectIdSet = new Set(ownedProjectIds);
+    for (const b of candidateBoardRows) {
+      if (seenBoardIds.has(b.id)) continue;
+      const ownsProject = ownedProjectIdSet.has(b.projectId);
+      if (!ownsProject && b.visibility !== 'public') continue;
+      const project = projectById.get(b.projectId);
+      if (!project) continue;
+      project.boards.push({ id: b.id, name: b.name, color: b.color, projectId: b.projectId, role: 'viewer' });
+      seenBoardIds.add(b.id);
+    }
+  }
+
   return result;
 }
 
@@ -126,14 +224,27 @@ export interface BoardData {
   name: string;
   color: string;
   projectId: string;
-  role: 'owner' | 'member';
+  /**
+   * 'viewer' (K.18) — read-only access via project ownership or a public
+   * project + public board, never an explicit `kanban_board_members` row.
+   * Every mutation action still checks board membership directly and never
+   * treats 'viewer' as passing, so this is purely a read-side addition. The
+   * board renders fully for a viewer even though no read-only UI exists
+   * yet (K.21) — mutation attempts are denied server-side in the meantime,
+   * just without a friendly disabled-affordance UI around them.
+   */
+  role: 'owner' | 'member' | 'viewer';
   members: Array<MemberIdentity & { role: string }>;
   labels: Array<{ id: string; name: string; color: string }>;
   lists: BoardList[];
   cards: BoardCardSummary[];
 }
 
-/** Full board payload, or null when the actor is not a member. */
+/**
+ * Full board payload, or null when the actor has no access at all (not a
+ * board member, not a project owner, and not a project member of a public
+ * project + public board — K.18).
+ */
 export async function getBoardData(
   db: KanbanDb,
   boardId: string,
@@ -145,10 +256,13 @@ export async function getBoardData(
       name: schema.boards.name,
       color: schema.boards.color,
       projectId: schema.boards.projectId,
-      role: schema.boardMembers.role,
+      boardVisibility: schema.boards.visibility,
+      projectVisibility: schema.projects.visibility,
+      memberRole: schema.boardMembers.role,
     })
     .from(schema.boards)
-    .innerJoin(
+    .innerJoin(schema.projects, eq(schema.projects.id, schema.boards.projectId))
+    .leftJoin(
       schema.boardMembers,
       and(
         eq(schema.boardMembers.boardId, schema.boards.id),
@@ -157,8 +271,27 @@ export async function getBoardData(
       ),
     )
     .where(eq(schema.boards.id, boardId));
-  const board = boardRows[0];
-  if (!board) return null;
+  const boardRow = boardRows[0];
+  if (!boardRow) return null;
+
+  let role: 'owner' | 'member' | 'viewer';
+  if (boardRow.memberRole === 'owner' || boardRow.memberRole === 'member') {
+    role = boardRow.memberRole;
+  } else {
+    const projectRole = await getProjectRole(db, boardRow.projectId, actor);
+    if (projectRole === 'owner') {
+      role = 'viewer';
+    } else if (
+      projectRole === 'member' &&
+      boardRow.projectVisibility === 'public' &&
+      boardRow.boardVisibility === 'public'
+    ) {
+      role = 'viewer';
+    } else {
+      return null;
+    }
+  }
+  const board = { id: boardRow.id, name: boardRow.name, color: boardRow.color, projectId: boardRow.projectId };
 
   const [memberRows, boardLabels, listRows, cardRows] = await Promise.all([
     db
@@ -266,6 +399,7 @@ export async function getBoardData(
     role: m.role,
     name: directoryById.get(m.userId)?.name ?? null,
     email: directoryById.get(m.userId)?.email ?? null,
+    image: directoryById.get(m.userId)?.image ?? null,
   }));
 
   return {
@@ -273,7 +407,7 @@ export async function getBoardData(
     name: board.name,
     color: board.color,
     projectId: board.projectId,
-    role: board.role === 'owner' ? 'owner' : 'member',
+    role,
     members,
     labels: boardLabels,
     lists: listRows.map((l) => ({ ...l, cardCount: countByList.get(l.id) ?? 0 })),
@@ -555,6 +689,7 @@ export async function getInboxFeed(db: KanbanDb, actor: Actor): Promise<InboxFee
     userId,
     name: directoryById.get(userId)?.name ?? null,
     email: directoryById.get(userId)?.email ?? null,
+    image: directoryById.get(userId)?.image ?? null,
   }));
 
   const items: InboxItem[] = activityRows.map((a) => ({

@@ -1,6 +1,6 @@
 # Sovereign Kanban — Roadmap
 
-**Manifest version:** 0.17.0 · **Last updated:** 2026-08-19
+**Manifest version:** 0.20.7 · **Last updated:** 2026-08-20
 
 Chronological build index — one row per PR, platform-`ROADMAP.md` style. Full
 task detail lives in [SPEC.md](SPEC.md); the product concept in
@@ -46,7 +46,22 @@ on the previous row unless noted.
 
 | Slot   | Task                                   | Status | Spec task                                              |
 | ------ | -------------------------------------- | ------ | ------------------------------------------------------ |
-| 1.0.0  | Phase 1 hardening & polish pass        | ✅     | [K.16](SPEC.md#k16--phase-1-hardening--polish-pass)    |
+| 0.17.0 | Phase 1 hardening & polish pass        | ✅     | [K.16](SPEC.md#k16--phase-1-hardening--polish-pass)    |
+
+## Phase 2 — Project & board membership + visibility
+
+Web only — mobile read-only parity is a documented follow-up, not part of
+this phase. See `CONCEPT.md`'s "Phase 2" section for the decided product
+rules and `SPEC.md`'s `K.17`–`K.22` for technical detail.
+
+| Slot   | Task                                        | Status | Spec task                                                                 |
+| ------ | -------------------------------------------- | ------ | -------------------------------------------------------------------------- |
+| 0.18.0 | Project members & visibility schema         | ✅     | [K.17](SPEC.md#k17--project-members--visibility-schema)                  |
+| 0.19.0 | Project & board access authz (view vs. edit) | ✅     | [K.18](SPEC.md#k18--project--board-access-authz-view-vs-edit)            |
+| 0.20.0 | Project membership UI & sharing             | ✅     | [K.19](SPEC.md#k19--project-membership-ui--sharing)                      |
+| 0.21.0 | Board membership UI & board visibility      | ⬜     | [K.20](SPEC.md#k20--board-membership-ui--board-visibility)               |
+| 0.22.0 | Read-only view mode (web)                   | ⬜     | [K.21](SPEC.md#k21--read-only-view-mode-web)                             |
+| 0.23.0 | Phase 2 hardening & verification pass       | ⬜     | [K.22](SPEC.md#k22--phase-2-hardening--verification-pass)                |
 
 ## Prioritization rationale
 
@@ -66,12 +81,36 @@ on the previous row unless noted.
 - **The gesture-risk task (K.15) is isolated and last in mobile** so the
   carousel (K.13) is stable before the known dnd-kit/iOS-Safari conflict is
   taken on; its review gate requires a documented simulator gesture matrix.
-- **1.0.0 is a release statement:** Phase 1 scope complete, hardened, and
-  verified on both surfaces — mirroring the platform's "single jump to
-  1.0.0" convention.
+- **`0.17.0` is a release statement:** Phase 1 scope complete, hardened, and
+  verified on both surfaces. K.16 itself actually shipped at `1.0.0`,
+  matching the platform's "single jump to 1.0.0" convention — the version
+  moved on from there twice more before Phase 2 started: `2.0.0` for the
+  `id`/`shell`/`type` identity change (a real major bump, breaking the DB
+  namespace), then a deliberate renumbering back down to `0.17.0`. This
+  table's slot column tracks the version a task's *own* PR actually shipped
+  at, so it reads `0.17.0` here — not `1.0.0` or `2.0.0` — to match
+  `manifest.json` and avoid disagreeing with the two numbering decisions
+  made after K.16 landed.
+- **Schema (K.17) before authz (K.18) before any UI** — the same
+  foundation-first ordering Phase 1a used, and for the same reason: every
+  later Phase 2 task reads or writes the new tables/columns.
+- **Authz (K.18) before either membership UI task (K.19/K.20)** — the UI
+  tasks are thin surfaces over access rules that need to exist and be
+  tested first, not discovered while wiring a dialog.
+- **Project membership (K.19) before board membership (K.20)** — board-add
+  now sources its candidate list from project members, so the picker has
+  nothing to show until project membership exists.
+- **Read-only view mode (K.21) is last and largest on purpose** — it's the
+  one task that touches nearly every interactive board component, so it
+  waits until the access rules it renders (K.18) and the surfaces that
+  toggle visibility (K.19/K.20) are already stable and testable, rather
+  than being built against a moving target.
+- **`0.23.0` closes Phase 2 the same way `0.17.0` closed Phase 1** — a
+  dedicated hardening/verification pass with a second real user, not folded
+  into the last feature task.
 
 ## Phase 2 candidates (not committed)
 
 Due-date reminder schedules (manifest `schedules`), attachments, card cover
-images, board templates, cross-board search, offline support, project-level
-membership.
+images, board templates, cross-board search, offline support. (Project-level
+membership and visibility graduated from this list — see "Phase 2" above.)

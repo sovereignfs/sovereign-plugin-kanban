@@ -50,6 +50,7 @@ describe('kanban schema (real migrations, in-memory sqlite)', () => {
       'kanban_inbox_state',
       'kanban_labels',
       'kanban_lists',
+      'kanban_project_members',
       'kanban_projects',
     ]);
   });

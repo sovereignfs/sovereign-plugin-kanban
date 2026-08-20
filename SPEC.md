@@ -7,7 +7,1058 @@
 
 ## Status
 
-✅ Phase 1 complete — K.1–K.16 shipped, manifest at `0.17.2`.
+✅ Phase 1 complete — K.1–K.16 shipped. 🚧 Phase 2 in progress — K.17–K.19
+shipped, manifest at `0.20.7`; K.20 partially shipped within the same
+version (see its own entry below and the ⬜/✅ breakdown in K.20's own
+task section) — full K.20 completion is still pending, not yet a version
+bump of its own.
+
+**Card detail modal header/layout retouch, three rounds of direct
+developer feedback on the same modal (0.20.6 → 0.20.7).** (1) **Header
+vertical alignment + delete affordance.** The header row (title input,
+ellipsis-vertical menu trigger) read as misaligned against `Dialog`'s own
+independently-positioned `.close` button, and the ellipsis menu's only
+non-mobile-relevant item was "Delete card" — no reason to hide a single
+destructive action behind a menu on desktop. Desktop now renders a direct
+trash-icon `Button` instead of the `Menu`; mobile keeps the `Menu` (still
+needed there for "Move to…", the non-drag cross-list move path, K.15).
+Made the header row `position: sticky` (bled to the panel's real top edge
+via the same `margin`/negative-inset recipe used elsewhere in this modal)
+so it stays pinned while Comments/Activity scroll beneath it — desktop
+only; mobile already has its own permanently-pinned title via `Dialog`'s
+`OverlayHeader`, so mobile keeps the plain non-sticky layout
+(`.cardHeaderMobile`) to avoid a persistent duplicate title bar, caught
+live at a real 375px viewport before shipping (worse than the old
+one-time scroll-away duplication). **First sticky-alignment attempt was
+wrong, caught by live measurement, not by report:** assumed bleeding to
+the panel's real top edge would land the title at `.close`'s own vertical
+center "as a side effect" — `getBoundingClientRect()` after implementing
+showed the same 16px delta that had motivated the original hack, since
+bleeding to the edge changes where the row's box starts, not its own
+center's relationship to an independently-positioned sibling. Fixed with
+an explicit `padding-top` reduction on the header (tuned live to
+`--sv-space-2`, later `--sv-space-1` — see below); re-verified
+`titleCenterY === deleteCenterY === closeCenterY` exactly via
+`getBoundingClientRect()` before calling it done. (2) **Tab-panel height
+stability.** Switching Comments ↔ Activity visibly resized the whole
+dialog every click, since the two panels rarely have the same content
+length. Added `.cardTabPanels { min-height: 14rem; }` around both panels
+(kept mounted at all times, toggled via a CSS class — not conditional
+rendering, so an in-progress comment draft survives a tab switch) — stops
+the *common* short-content jump without making the dialog truly
+fixed-height; content taller than the reserved minimum still grows it,
+same as the dialog's own content-driven-height behavior everywhere else.
+(3) **Multi-line description/comment rendering bug, found from developer
+report, not assumed.** A card description saved via the plain multi-line
+`<textarea>` composer rendered back as a single run-on line. Root cause:
+`CardDescription.tsx` rendered it through `@sovereignfs/ui`'s `Markdown`
+component, whose paragraph handling deliberately joins consecutive
+non-blank lines with a single space (CommonMark-lite soft-wrap, meant for
+authored long-form content like a privacy policy — its own docstring says
+so) — collapsing every real Enter-press a user typed. Fixed at the DS
+layer with a genuine new `Markdown` capability rather than a plugin-local
+workaround: a `preserveLineBreaks?: boolean` prop (`packages/ui`, now
+`0.59.0`) that renders each line joined by `<br />` instead of a joined
+paragraph when set; `CardDescription.tsx` opts in. Added a Storybook story
+(`PreserveLineBreaks`) and a new test file (`Markdown.test.tsx` — none
+existed before) covering the default-unchanged case, the new
+line-preserving case, that a blank line still starts a new paragraph
+under the new prop, and that headings/quotes/lists are unaffected.
+**Proactively found and fixed the identical bug class in
+`CardComments.tsx`**, not explicitly reported but the same root cause —
+comment bodies are plain text (no `Markdown` involved at all), just
+rendered inside an ordinary `Typography` whose CSS default
+(`white-space: normal`) collapsed newlines the same way; fixed with a
+`.commentText { white-space: pre-wrap; }` class, no DS change needed
+since this was a plain-text rendering choice, not a Markdown-semantics
+one. (4) **Close icon.** `Dialog`'s desktop close button used a literal
+`×` text character sized via `font-size`; mobile's own `OverlayHeader`
+close button already used a real `Icon`. Swapped desktop to
+`<Icon name="circle-x" size="md" />` (`packages/ui`, same `0.59.0`) for
+visual consistency with mobile and every other icon-driven affordance in
+the design system — platform-wide, since `Dialog` has no per-instance
+close-icon override; every consumer gets it. Removed the now-dead
+`font-size`/`line-height` overrides from `.close` (`Icon`'s own `size`
+prop controls sizing now). `Dialog.test.tsx`'s existing close-button
+assertions are aria-label-based (`getByRole('button', { name: 'Close' })`),
+not text-content-based, so this needed no test changes — re-ran the
+existing 10/10 to confirm. (5) **Breadcrumb removal.** The "in
+{listName}" caption under the header was redundant with the card's
+already-visible board-column context and added a second wrapped line to
+an already-busy header row — removed the JSX, the now-unused `listName`
+prop/plumbing (`CardHeader`'s props, `CardDetailOverlay`'s own
+`list`/`listName` lookup), and the now-fully-dead `.cardBreadcrumb` CSS
+rule (confirmed via grep it had no other reference). (6) **Title field
+sizing.** "The title field can be a bit longer" — genuinely ambiguous
+(width/height/Trello-style multi-line wrap); interpreted as taller/more
+prominent given the field was already `flex: 1 1 auto` (full available
+row width) and the breadcrumb's removal freed up the row for the title to
+be the visually dominant element. Increased `.cardTitleInput`'s vertical
+padding (`--sv-space-1` → `--sv-space-2`). This regrew the header row's
+own height, which — since the header is sticky with a fixed top and the
+close button is independently absolutely-positioned — shifted every
+child's vertical center down relative to `.close`'s fixed position by the
+same amount live-measurement had tuned away in (1). Re-measured rather
+than assumed: reduced the header's `padding-top` one step further
+(`--sv-space-2` → `--sv-space-1`) and re-verified
+`titleCenterY === deleteCenterY === closeCenterY` exactly again. All six
+changes verified live in the browser preview on both desktop (≥768px) and
+a real 375px mobile viewport — including typing a real multi-line
+description end-to-end (composer → save → re-render) to confirm the
+`preserveLineBreaks` fix works outside its own unit tests, not just
+inspected in code. Full check suite green: typecheck (this plugin),
+`pnpm exec eslint` (this plugin + the two touched `packages/ui`
+components), `pnpm exec prettier --check`, `pnpm design:tokens:check`,
+and `pnpm exec vitest run` across this plugin + `Dialog` + `Markdown`
+(114 tests, 8 files, all passing).
+
+**Card detail modal retouch, follow-up on "item 3" from the polish batch
+below — developer picked three concrete areas from a multi-select
+question rather than a free-form "make it nicer" ask**: section rhythm/
+spacing, the empty-state "+" buttons, and description/checklist field
+styling. (1) **Section rhythm.** Labels/Due date/Assignees were three
+full-width stacked `.cardSection`s, each at the same visual weight as the
+much bigger Description/Checklist blocks below them — a long uniform
+list with no sense of grouping. Wrapped the three in a new `.cardMetaRow`
+flex row (`flex: 1 1 12rem` per field, wrapping down to one column at
+narrow widths — verified at both the `xl` dialog's full 48rem and a real
+375px mobile viewport, no separate mobile-specific stacking needed) with
+a `border-bottom` marking where "card metadata" ends and "card content"
+begins, a boundary that didn't exist before. (2) **Empty-state "+"
+buttons.** `.chipAddButton` (Labels/Assignees) was a 24px dashed-circle
+icon-only button regardless of whether the row already had content —
+developer feedback that the dashed style specifically read as a
+disabled/placeholder region (the same dashed language this codebase
+otherwise reserves for full "+ Add list"/"+ New board" cards, never a
+bare unlabeled icon). Split into two states: **empty** now shows a real
+text CTA ("+ Add label" / "+ Add assignee", `Button variant="ghost"` with
+icon + text, new `.chipAddTextButton`) — unambiguous even with nothing
+else in the row for context; **populated** keeps a small icon-only
+trigger beside the real chips/avatars that already establish "this is a
+collection," but with the dashed border removed entirely — now matches
+every other icon-only ghost `Button` in this codebase (transparent at
+rest, background only on hover) instead of a bespoke style that only
+existed here. (3) **Description/checklist empty-state styling.** The
+empty description box used `background: var(--sv-color-surface-sunken)`
+— developer feedback this read as a disabled field, not an invitation.
+Added a `.descriptionViewEmpty` modifier (dashed border, transparent
+background, sunken fill only on hover) applied only when
+`!card.description`; a real, filled-in description keeps the original
+plain sunken-card treatment unchanged — the dashed language is
+specifically for "nothing here yet," not for real content. Checklist's
+"+ Add an item" was plain muted ghost-button text with no visual
+container, reading as inert label copy rather than a clickable row —
+given the same dashed-bordered-row treatment via a new
+`.checklistAddTrigger` class *added alongside* (not replacing)
+`.addCardTrigger`, since that class is shared with `QuickAddCard`'s
+list-footer "+ Add a card" trigger, deliberately left untouched (out of
+scope, not something flagged). Verified live end-to-end at both `xl`
+desktop and a real 375px mobile viewport, on both an empty card
+("Newsletter revamp": Add label / No due date / Add assignee, dashed
+description + checklist rows) and a populated one ("Reach out to partner
+brands": one real assignee avatar next to a plain undashed "+", "Add
+label" still showing since that card has no labels) — confirms the
+empty/populated split renders correctly per-field, not just per-card.
+Full check suite clean (100/100 tests, typecheck, design-tokens,
+prettier).
+
+**Card detail modal polish, developer-requested against a real screenshot
+(four-item list; the fourth, a broader "real re-touch," is still open —
+see the follow-up question)**: (1) **Width.** `Dialog`'s existing sizes
+jump straight from `md` (36rem/576px) to `lg` (a true 100%/100% fixed box
+— the overlay-shell-plugin size, meant to hold still while Account/Console
+switch internal views). Neither fit "a bit bigger, not full screen" for a
+form-heavy modal like this one. Added a genuinely new `Dialog` size,
+`xl` (48rem/768px, `packages/ui`, `@sovereignfs/ui` now `0.59.0` — a
+minor bump, same precedent as adding a new DS icon earlier this session:
+additive, not breaking) rather than hacking a one-off width override into
+this plugin's own CSS — Dialog exposes no `className`/style-override prop
+at all, and a missing "in-between" size is exactly the kind of DS gap this
+codebase's own DS-first placement rule says belongs in `packages/ui`, not
+patched around locally. Added the matching Storybook story
+(`ExtraLarge`) and a unit test (`supports the xl size`), same pattern as
+the existing `sm`/`full` coverage. `CardDetailOverlay.tsx`'s own
+`size={isMobile ? 'full' : 'md'}` → `'xl'`. (2) **Title border +
+"weird alignment" with the close button.** Root-caused via
+`getBoundingClientRect()`, not eyeballed: `Input`'s own base CSS sets
+`width: 100%` unconditionally, which — as a flex item inside `.cardHeader`
+(`flex: 1 1 auto`) — fought that sizing and claimed the *entire* row for
+itself, wrapping the ellipsis "Card options" button onto its own line
+below the title (visible live: two rows instead of one, throwing off
+every alignment downstream, matching the screenshot). Measured the actual
+title box before touching anything: `titleInput.right` (828px) landed
+20px *inside* the close button's own span (808–840px) — a real box
+underlap, not a visual illusion. Fixed with `width: auto !important` +
+`min-width: 0` on `.cardTitleInput` (letting `flex: 1 1 auto` govern
+sizing the way it does for every other flex-embedded control in this
+file) plus `padding-right: var(--sv-space-5)` on `.cardHeader` — 20px,
+computed exactly as `.close`'s width (32) + its own right offset (12)
+minus `.content`'s own right padding (24), not a rounded-up guess; same
+"reserve exact clearance for the fixed-position close button" technique
+already established for `ManageProjectDialog`'s sticky header earlier
+this session. Border/background also removed by default (restored on
+hover/focus only) so the title reads as a heading with an inline-edit
+affordance, not a permanently-boxed form field — the specific "get rid of
+the border" ask. Re-measured after the fix: ellipsis button's own right
+edge lands at exactly 808px, flush against the close button's left edge
+with zero overlap. (4, done ahead of 3) **Comments/Activity as tabs on
+desktop.** K.14 already built this tab-switching pattern for mobile
+(`CardCommentsActivity`, `useOverlaySecondRow` handing the tab strip up to
+the Dialog's mobile header) — extended the same `Tabs` component to
+desktop too, rendered inline in the body instead (no mobile header to
+hand it to there). Both panels stay mounted at all times on both surfaces
+now (toggled via a CSS class, not conditional rendering) — unmounting the
+inactive one on every switch would discard an in-progress, not-yet-
+submitted comment draft, the same reasoning K.14 already established for
+mobile, now extended to desktop. **A real duplication caught live while
+verifying this, not by report**: `CardComments`/`CardActivity` each
+render their own "Comments"/"Activity" `Typography` label heading inside
+their own section — always redundant once wrapped in an already-labeled
+tab (present on mobile since K.14 shipped, just newly visible now that
+desktop shows the same structure). Removed both labels; the tab strip
+alone names the section on both surfaces now. Verified live end-to-end on
+both surfaces: desktop shows the wider `xl` panel, a borderless title
+with zero close-button overlap (re-measured, not just re-screenshotted),
+and working non-duplicated tabs; mobile re-checked at a real 375px
+viewport to confirm the K.14 pinned-header tab behavior is unaffected by
+any of the above. Full check suite clean across both packages: kanban
+plugin 100/100 vitest + typecheck + design-tokens + prettier,
+`@sovereignfs/ui` typecheck + 437/437 vitest (436 + the new `xl` test) +
+lint + prettier. **Item 3 — "this UI needs a real re-touch" — deliberately
+not guessed at**: too open-ended to implement blindly per this repo's own
+wireframe-before-build convention for anything touching a materially
+broad surface; asked the developer directly which specific aspects to
+prioritize rather than unilaterally redesigning a dozen visual details
+(see the question asked in the same turn as this entry).
+
+**Board route renamed `/kanban/boards/[boardId]` → `/kanban/b/[boardId]`,
+developer-requested** (a follow-up on the URL discussion from the
+copy-link feature just below — asked directly whether `boards/`,
+`board/`, or `b/` read best; picked `b/` over the codebase's one other
+precedent for this pattern, `sovereign-plugin-shopper`'s `/lists/[listId]`,
+a deliberate one-off rather than a mistake). **No redirect from the old
+path** — a developer choice, explicitly scoped out: any already-sent
+notification whose `url` was recorded before this change (real or seeded)
+now 404s, since notification rows store a plain string, not a live
+reference recomputed on read. Acceptable for a pre-1.0 local/dev instance;
+would need revisiting before this pattern is used on a route with a real
+production audience carrying old links. Mechanical rename across every
+site a full-repo grep turned up: the route directory itself
+(`app/boards/[boardId]/` → `app/b/[boardId]/`, `git mv` to preserve
+history), 3 notification-URL sites in `actions.ts`, the board-tile `Link`
+in `HomeView.tsx`, the copy-link URL in `BoardShareDialog.tsx` (today's own
+feature, added earlier this session), `InboxFeedList.tsx`'s deep links, the
+two `pathname.startsWith('/kanban/boards')` active-nav-state checks
+(`KanbanSidebar.tsx`, `KanbanMobileFooter.tsx`), a doc comment in
+`app/(home)/layout.tsx`, and 2 test assertions in `actions.test.ts`.
+Confirmed via a platform-level check before starting that nothing needed
+updating outside the plugin: `RESERVED_API_SEGMENTS`
+(`runtime/src/api-namespace.ts`) only governs `/api/*` first-segments, has
+nothing to do with plugin page routes, and no middleware/`next.config`
+reference this path pattern either. Historical `Status`-section narrative
+entries elsewhere in this file that cite the *old* path (K.7's drag
+verification log, K.9's own share-dialog writeup, the two production
+incident entries under `0.17.x`, etc.) were deliberately left unchanged —
+they're accurate records of what was true when they were written, not a
+live reference; only genuinely load-bearing *current* documentation (the
+`## Routes` table, K.6's own review checklist, this file's own
+"Notification URLs deep-link to…" line) was updated to the new path.
+Verified live end-to-end: board-tile links, the copy-link field, and both
+active-nav-state checks (desktop sidebar highlight and the mobile footer's
+"Boards" tab, checked at a real 375px viewport) all resolve to
+`/kanban/b/<id>`; navigating there directly renders the full board (lists,
+cards, avatars, Share). Full check suite clean (100/100 tests, typecheck,
+lint, design-tokens, prettier).
+
+**`BoardShareDialog` title, copy-link, and project-scoped add-picker
+(K.20's first deliverable), developer-requested directly**: three related
+asks against the same dialog. (1) Same missing-desktop-title gap as
+`ManageProjectDialog`'s own fix earlier this session (`Dialog`'s `title`
+prop only renders in the mobile `OverlayHeader`) — added a `Typography
+variant="h3"` heading, reusing the now-generic `.dialogStickyHeader` class
+(renamed from `.manageDialogHeader` — see its own comment for why sticky
+is warranted: this dialog's content, member list + candidate picker, can
+genuinely scroll past a short viewport the same way `ManageProjectDialog`'s
+did). (2) A new `BoardUrlRow`: a read-only `Input` showing
+`${origin}/kanban/boards/${boardId}` plus a "Copy" button (`Icon`
+flips `copy`→`check`, label flips "Copy"→"Copied", 2s, same pattern as
+Console's `LicenseGenerator.tsx`). Built the URL from `boardId` inside a
+`useEffect`, not `window.location.href` read during render — reading a
+browser global at render time in a `'use client'` component is one of this
+repo's own hard architectural rules (server render has no `window`, client
+render does — a hydration mismatch), and `window.location.href` verbatim
+would also wrongly carry a `?card=…` query param whenever the dialog is
+opened while a card's detail overlay is showing, handing out a link to one
+specific card instead of a general board invite. **A real robustness gap
+found and fixed while live-testing this, not by report**: the initial
+`copy()` had no error handling around `navigator.clipboard.writeText()` —
+harmless when it succeeds, but any rejection (permission denied, a
+non-focused document — the exact case this session's own browser-preview
+tooling hit, `"Document is not focused"`) surfaced as a genuine unhandled
+promise rejection, caught live via Next.js's dev error overlay ("1 Issue"
+badge) after clicking Copy. Wrapped in a `try`/`catch`; a failure now shows
+a toast ("Couldn't copy link… Copy the URL from the field above instead")
+instead of crashing silently into dev-only chrome (and, in a real user's
+browser, an uncaught rejection with no such overlay to at least surface it
+by accident). (3) The actual K.20 deliverable: `MemberPicker` now sources
+candidates from a new `getBoardMemberCandidates` action — the board's
+project members not yet on the board — instead of `searchBoardMemberCandidates`'s
+old live `sdk.directory.searchUsers` call. Fetched once per dialog open
+(not per keystroke); the text field filters that already-fetched list
+client-side, no server round-trip per character, since project membership
+is a small, already-known set rather than the full user directory
+`ManageProjectDialog`'s own project-level picker still legitimately
+searches. Added matching "Everyone on this project is already on the
+board" / "No matches" states, same `.memberResultStatus` pattern
+established for `ManageProjectDialog` earlier this session. **Also
+hardened `addBoardMember` itself**, not just the picker that feeds it:
+added a `getProjectRole` check (after the existing directory-existence
+check, so a genuinely nonexistent user still gets "could not be found,"
+not a message implying they exist but lack project access) rejecting
+anyone who isn't already a project member with "Add them to the project
+first." — an action is a public POST endpoint dispatched by action id per
+this file's own header docstring, so a picker that only *offers*
+project members would still leave a forged or scripted direct call able
+to hand board access to a total stranger. This rippled through roughly a
+dozen existing K.9 tests that added a board member without first adding
+them to the project (`setup()`'s own board owner is automatically a
+project member via `createProject`, but every `newcomer`/`commenter`/
+`'user-other-member'` fixture wasn't) — each now calls `addProjectMember`
+first, with `harness.sentNotifications` cleared afterward where a test
+asserts a specific notification count (`addProjectMember` sends its own
+"added to project" notification, same fire-after-commit pattern as
+`addBoardMember`). Replaced the stale "search excludes existing members"
+test (assumed the old live-search behavior) with one asserting the new
+project-membership-sourced set directly, and added a dedicated test for
+the new `addBoardMember` rejection. **New DS icon**: no `copy` icon
+existed in the curated Lucide set (`packages/ui/src/components/Icon/icons/`)
+— added `'copy'` to `scripts/icon-list.ts` and regenerated via
+`pnpm generate:icons`, matching the exact process this repo already used
+for `user-round-plus` (same commit precedent, same `0.56.6→0.57.0` minor
+bump pattern — `@sovereignfs/ui` bumped `0.57.1→0.58.0` here). Regenerating
+incidentally also refreshed two other icons (`calendar`, `carrot`) whose
+committed `.tsx` output had drifted from the currently-pinned `lucide`
+version (`1.28.0`) — exactly the stale-icon risk `generate-icons.ts`'s own
+file-level comment warns about and explicitly instructs to accept ("review
+the full diff, not just the icons you meant to touch") rather than revert.
+No Storybook update needed — `Icon.stories.tsx`'s `AllIcons` story derives
+its icon list from `Object.keys(ICONS)` dynamically, so the new icon
+appears automatically. Verified live end-to-end: title renders, the URL
+field shows the correct board-scoped link (no stray `?card=` param),
+"Copy" degrades to a toast instead of an unhandled rejection, and a real
+project member ("Dev Auditor", not yet on this board) appears in the
+picker, gets added successfully (member list, header avatar stack, and
+the picker's own "everyone already on the board" empty state all update
+correctly), matching this plugin's own established
+derive-dialog-target-from-live-props discipline throughout. Full check
+suite clean across every touched package: kanban plugin 100/100 vitest +
+typecheck + lint + design-tokens + prettier, `@sovereignfs/ui` 436/436
+vitest + typecheck. Manifest bumped `0.20.2` → `0.20.3` — a minor-shaped
+change in substance (new server action, new authz check, new DS icon) kept
+inside the `0.20.x` line rather than jumping to the `0.21.0` slot
+`ROADMAP.md` reserves for K.20's *full* completion, since two of that
+task's three deliverables (board-owner-parity, visibility toggle) remain
+unshipped — see K.20's own task section for the itemized breakdown.
+
+**Ellipsis padding-zeroing fix left the hover highlight unbalanced,
+developer-reported from a real (non-preview-browser) screenshot** —
+follow-up on the overlap fix directly below: zeroing only `padding-left`
+stopped the box overlap, but left the button's own padding asymmetric (0
+left, 12px right, the ghost `Button` default), so its hover/pressed
+background — sized to that box — sat flush against the icon's left edge
+and ballooned out on the right, reading as visibly lopsided. Worked out
+the general constraint this whole class of fix is bound by: hitting an
+exact target gap (here, 8px, matching the row's other gaps) while keeping
+the box's own edge clear of its neighbor's requires `padding ≤ gap` —
+with the *default* ghost `Button` padding (12px) bigger than the flex gap
+(8px), no margin value can satisfy both non-overlap and an exact 8px match
+while padding stays symmetric; that's *why* the first two attempts each
+sacrificed a different thing (attempt 1: overlapped; attempt 2:
+asymmetric). Landed on a third version that reduces the padding itself
+(symmetric, `--sv-space-1` = 4px both sides — safely ≤ the 8px gap) via a
+new `padding-left`/`padding-right` override on `.boardOptionsTrigger`,
+paired with a correspondingly smaller `margin-left: calc(-1 *
+var(--sv-space-1))` on `.boardOptionsMenu` (was `--sv-space-3`) — this
+satisfies all three constraints together: exact gap match, zero box
+overlap, and a genuinely symmetric (centered) hover highlight. Also had to
+update `.boardOptionsMenu`'s existing `margin-right` formula (the
+account-avatar alignment fix, an unrelated concern) to reference the same
+new `--sv-space-1` padding term instead of the old `--sv-space-3`, since
+that formula bakes in the button's own padding-right value — left
+unchanged, it would have silently drifted the glyph out of alignment with
+the avatar above once the padding itself changed. Verified live: re-
+measured after the fix — `paddingLeft`/`paddingRight` both `4px`
+(symmetric, confirmed via `getComputedStyle()`), a real 4px clearance
+between the two buttons' boxes (`900 − 896`, zero overlap), the icon
+itself landing exactly 8px from Share's edge (`900 + 4 = 904`, matching
+the row's other gaps), and the avatar-alignment formula still holding (1px
+residual, same as before — icon/avatar right edges essentially flush).
+Full check suite clean (99/99 tests, typecheck, design-tokens, prettier).
+
+**Board options ellipsis genuinely overlapped Share's box, reported from a
+hover screenshot**: developer reported the ellipsis trigger's hover
+background visibly cut into a corner of the Share button beside it.
+Measured directly via `getBoundingClientRect()` before touching anything —
+confirmed a real, non-visual overlap: the ellipsis button's own box
+started 4px to the *left* of Share's right edge (`ellipsisRect.left −
+shareRect.right = −4`), not just a perceived crowding. Root cause was an
+existing fix (`.boardOptionsMenu`'s `margin-left:
+calc(-1 * var(--sv-space-3))`) that aligned the ellipsis *glyph* correctly
+(matching the row's other 8px gaps) but did so by shifting the trigger's
+*whole box* left by its own horizontal padding (12px) — since that padding
+(12px) is bigger than the flex `gap` it was shifting into (8px), the box
+was mathematically guaranteed to intrude 4px into the space before it,
+regardless of how carefully the margin value was chosen. Fixed by zeroing
+the trigger `Button`'s own `padding-left` instead of moving its box via
+margin — since `Button` (unlike `Popover`'s own root, the actual reason
+for the wrapping `<span>` in the first place) takes a real `className`,
+this shrinks the box rather than relocating it, so the glyph lands in the
+same correct spot (`box.left` + `padding-left` = `Share.right` + `gap` +
+`0` = `Share.right` + 8) with the box's own left edge staying safely at
+`Share.right + gap`, never past it. New `.boardOptionsTrigger` class,
+passed via `className` on the trigger `Button` in `BoardView.tsx`;
+`.boardOptionsMenu`'s existing `margin-right` (an unrelated fix, aligning
+the glyph with the account avatar above it) is untouched. Verified live:
+re-measured the same two rects after the fix — `896` (Share's right edge)
+vs. `904` (ellipsis's left edge), an 8px gap with zero overlap, matching
+every other gap in the row. (Headless `hover` screenshots didn't reliably
+render the `:hover` background in this browser tool, so the fix was
+verified via the geometry directly — the actual root cause — rather than
+a before/after hover screenshot.) Full check suite clean (99/99 tests,
+typecheck, lint, design-tokens, prettier).
+
+**Member avatars never showed real profile photos — a gap developer-asked
+about directly, then fixed**: every `<Avatar>` call site across the plugin
+(board header's `MemberAvatarStack`, `BoardShareDialog`/
+`ManageProjectDialog`'s member rows and add-person pickers,
+`CardAssignees`, `CardComments`) only ever passed `name`, so `Avatar`
+always took its initials-fallback path — even though the data was already
+one step away: `getBoardData`/`getHomeData` (`_lib/queries.ts`) both call
+`sdk.directory.resolveUsers()`, whose `DirectoryUser` return type already
+carries `image: string | null` (the platform-level profile picture URL),
+but the mapping into this plugin's own `MemberIdentity` type
+(`_lib/identity.ts`) only kept `userId`/`name`/`email` — `image` was
+fetched from the directory and then silently discarded on every call
+site, three separate times (`getHomeData`'s project-members query,
+`getHomeData`'s board-members-by-project query, `getBoardData`'s own
+board-members query). Fixed by adding `image: string | null` to
+`MemberIdentity` and populating it at all three construction sites, then
+threading `src={member.image ?? undefined}` (or, for a raw
+`DirectoryUser` search result, `src={user.image ?? undefined}`) through
+every `Avatar` call site that represents a real person: the two already
+covered by this exact question (`MemberAvatarStack`,
+`ManageProjectDialog`'s `MemberRow`/`MemberPicker`), plus the ones a full
+grep for every `<Avatar>` usage in the plugin turned up along the way —
+`BoardShareDialog`'s equivalent `MemberRow`/`MemberPicker`,
+`CardAssignees`' assignee chips, and `CardComments`' author avatar (the
+last two look the user's own `userId` up against the already-resolved
+`members` array passed down as a prop, rather than needing a separate
+directory call). `KanbanHeader`'s own account-menu avatar was already
+correctly wired (`src={user.image ?? undefined}`, from the richer
+session-level user object, not this plugin's `MemberIdentity`) — nothing
+to fix there, confirmed by reading it rather than assumed. `Avatar` itself
+(`@sovereignfs/ui`) needed no changes — it already handles the image vs.
+initials fallback (including a broken-image-URL fallback via its own
+`onError`) entirely on its own; this was purely a data-plumbing gap, not
+a component bug. Verified live: board view and the manage-project dialog
+both still render correctly (initials, as expected — the dev seed users
+have no `image` set, so this exercises the fallback path, not the photo
+path; the actual `<img>` path is exercised by `Avatar`'s own existing
+Storybook/tests, not re-tested here since `Avatar` itself is unchanged),
+no console errors. Full check suite clean (99/99 tests, typecheck, lint,
+design-tokens, prettier).
+
+**Board-header `MemberAvatarStack` polish, reported from a screenshot**:
+developer feedback that the overlapping member avatars in the board
+toolbar felt cluttered — asked to clarify, the concrete points were "not
+exactly circular", "size also can be a bit bigger", and "redundant when
+you're the only member". The circularity concern turned out not to be a
+geometry bug — `getBoundingClientRect()`/`getComputedStyle()` confirmed
+each avatar was already an exact 28×28 `border-box` square with
+`border-radius: 50%`, a true circle — the perceived distortion was almost
+certainly the overlap cutout itself (the front avatar's ring notching out
+part of the one behind it) reading as *less* circular at a small, hand-
+tuned 28px than it would at a standard size. Three changes: (1) the
+stack now returns `null` below 2 members (`MemberAvatarStack` in
+`BoardView.tsx`) — solo-owned boards (the common case for a new board)
+no longer show a redundant one-avatar "stack" next to Share, which does
+the same "who's here" job; verified live on a real solo board (Test
+Board) that the stack is absent entirely, only Share and the ellipsis
+remain. (2) Since the case that justified the hand-tuned 28px (`Avatar`'s
+own `md` at 32px "reads too big packed this tightly") was reasoned
+against a *dense*, always-visible stack — no longer true once it's gated
+to 2+ real members — switched to `Avatar`'s plain built-in `size="md"`
+(32px) instead of a custom width/height override, removing a magic-number
+CSS rule and directly satisfying "bigger" against an existing size step
+rather than another arbitrary value. (3) `.stackedAvatarOverflow`'s badge
+size updated to match (32px, was 28px). Verified live at 32px:
+`getComputedStyle()` confirmed each avatar is still an exact `32×32`
+`border-box` circle (`border-radius: 50%`) on a real 2-member board.
+Full check suite clean (99/99 tests, typecheck, lint, design-tokens,
+prettier).
+
+**Sticky header regression, caught by the developer immediately from a
+screenshot of the fix above**: pinning `.manageDialogHeader` at `z-index:
+1` tied it with `Dialog`'s own `.close` button (`packages/ui`), which also
+has an explicit `z-index: 1` — both sit in `.panel`'s stacking context
+(the nearest positioned ancestor), and for equal z-index values the later
+element in DOM order wins the paint order. Since `.close` renders before
+`.content` in `Dialog.tsx`'s JSX, my header (nested inside `.content`,
+painted later) covered it completely once scrolled — the close button
+became invisible and, unlike a purely visual z-index bug, also stopped
+being the topmost hit-tested element at its own coordinates (confirmed via
+`document.elementFromPoint()` before the fix: it resolved to the scrim,
+not the button — a real interaction bug, not just a rendering one).
+Fixed by dropping the header's `z-index` to `0` instead of `1` — CSS
+stacking order compares z-index by numeric value first and only falls
+back to DOM order for exact ties, so `0` unconditionally loses to
+`.close`'s `1` regardless of paint order, while still correctly painting
+above the plain unpositioned scrolling content behind it (static content
+sits below any explicit `z-index: 0`/`auto` positioned layer in the
+stacking order, sticky-positioned or not). Verified live at the same
+1280×640 viewport, scrolled to the same absolute max: this time confirmed
+with `document.elementFromPoint()` at the close button's own center
+coordinates that the button itself (not the scrim) is the top hit-test
+target — genuinely clickable, not just visually present. (One dead end
+along the way: my first `document.querySelector('button[aria-label="Close"]')`
+returned a 0×0-rect element and falsely looked like the button had
+vanished entirely — turned out to be `OverlayHeader`'s own mobile close
+button, which shares the same `aria-label` and is simply
+`display: none`-d on desktop; had to select all matches and filter for
+the one with a non-zero rect to test the real desktop button.) Full check
+suite clean (99/99 tests, typecheck, design-tokens, prettier).
+
+**`ManageProjectDialog`'s own title left un-pinned, follow-up on the same
+scroll work**: the "Manage project" heading added earlier this session
+(the desktop-title fix, since `Dialog`'s `title` prop only renders on
+mobile) sat as an ordinary first child inside `.content` — it scrolled
+away with the rest of the form on a short viewport, same screenshot
+evidence as the cramped-scrollbar issue below. Kanban-local fix, not a
+`Dialog`/`packages/ui` change: the other dialogs in this plugin that use
+the identical "manual `Typography h3` as first content child" pattern
+(`BoardSettingsDialog`, `BoardShareDialog`, `MoveCardDialog`,
+`HomeDialogs`) are all `size="sm"` with short, non-scrolling content, so
+they were never actually exposed to this — only `ManageProjectDialog`
+(`size="md"`, a form plus a members list plus a danger zone) has content
+long enough to scroll on a real screen. Made the heading `position:
+sticky` via a new `.manageDialogHeader` class, matching `.boardToolbar`'s
+existing sticky-header precedent one level up in this same file — with one
+addition `.boardToolbar` didn't need: `.content`'s `padding:
+var(--sv-space-6)` (from `Dialog.module.css`) means the header has to
+bleed out to the panel's edges (`margin: calc(-1 * var(--sv-space-6))` on
+top/left/right) and restore its own padding, and sticky's `top` offset has
+to be the *negative* of that same padding value (not `0`) since the
+offset is measured against the scroll container's padding box, not where
+the negative margin visually moved the element — the standard "sticky
+header inside a padded scroll container" recipe. Background set to
+`--sv-color-surface-raised`, matching `Dialog`'s own `.panel` background
+exactly so there's no visible seam once content scrolls underneath.
+Verified live at the same 1280×640 cramped viewport: scrolled `.content`
+to its absolute max and confirmed via `getBoundingClientRect()` that the
+header stays at the same `top`, spans edge-to-edge with the panel (`left`/
+`right` within 1px, the border), and never overlaps the close button
+(`z-index: 1` only needs to clear the scrolling members list/danger zone
+underneath it, not the close button — that one is already always pinned,
+being `.panel`'s own `position: absolute` sibling of `.content`, never a
+`.content` descendant). Full check suite clean (99/99 tests, typecheck,
+lint, design-tokens, prettier).
+
+**Cramped-viewport scroll polish, reported from a screenshot on a 13"
+laptop screen**: on a short viewport, `Dialog`'s `md` size correctly
+shrinks its `max-height` cap to fit (`min(42rem, 100%)`, by design — see
+`Dialog.module.css`'s file-level comment), which is right, but the
+resulting internal `.content` scroll region was rendering the browser's
+default OS scrollbar — on non-overlay-scrollbar platforms/settings, wide
+enough to visually crowd `.panel`'s rounded corner and read as a layout
+bug rather than an intentional scroll affordance, especially with the
+panel already filling nearly the whole short viewport (little margin above
+or below to soften it). This is a `@sovereignfs/ui` fix, not a kanban-local
+one — `Dialog` is a shared component every plugin's dialogs render
+through, and this codebase already has an established slim, token-colored
+scrollbar pattern (`ScrollArea`, `MessageScroller`: `scrollbar-width: thin`
++ `scrollbar-color`/`::-webkit-scrollbar-thumb` with
+`--sv-color-border-strong`) that `Dialog.module.css`'s `.content` simply
+hadn't adopted yet. Applied the identical pattern there (`packages/ui`,
+now `0.57.1` — patch, purely additive CSS, no API change, so no
+`docs/upgrade.md` note needed per NFR-04). Left `.content`'s existing
+`overscroll-behavior: none` untouched — that's a deliberate, documented
+iOS-bounce fix unrelated to scrollbar appearance. Verified live at a
+1280×640 viewport (approximating a real 13" laptop's cramped browser inner
+height once chrome/tabs are subtracted): `getComputedStyle()` confirmed
+`scrollbar-width: thin` and the token color actually apply, against a
+`.content` region that genuinely overflows (784px content vs. 574px
+available) — a real scroll case, not simulated. Full check suite clean
+across both affected packages: `@sovereignfs/ui` typecheck + 436/436
+vitest, kanban plugin's own 99/99 vitest, `pnpm design:tokens:check`,
+prettier. No Storybook update needed (no new component, no prop/API
+change — Dialog already has no story file in this repo, so nothing to
+touch there either way).
+
+**Five `ManageProjectDialog` UX issues, reported together from a
+screenshot**: (1) No visible title — `Dialog`'s own `title` prop only
+renders in the mobile `OverlayHeader`; on desktop it's invisible (only sets
+`aria-label`), by design (see the component's own doc comment). Same
+established fix as `BoardSettingsDialog`: an explicit `Typography
+variant="h3"` heading as the first element in the dialog body, in addition
+to the `title` prop. (2) The Public/Private `SegmentedControl` stretched to
+the dialog's full width, leaving a large empty gap between the two pills —
+root cause is a genuine CSS gotcha, not specific to this component:
+`SegmentedControl`'s track is `display: inline-flex` (shrink-to-fit by
+design), but `FormField`'s `.field` wrapper is a flex column with the
+default `align-items: stretch`, and a flex column's stretch overrides a
+child's own display-driven sizing regardless of what that child's display
+type would normally do standalone. Fixed with `align-items: flex-start` on
+a new `.visibilityField` class, passed via `FormField`'s existing
+`className` prop — scoped to just this one field, since Name/Description
+legitimately need to stay full width. (3) "Save changes" spanned the full
+form width for the identical root cause one level up: `.manageSection` is
+also a flex column with default stretch, and `Button`'s own base rule is
+`display: inline-flex` (`Button.module.css`). Fixed with `align-self:
+flex-start` on a new `.saveProjectButton` class. (4) "Add a member doesn't
+seem to be working" — live-tested end-to-end (typing, the debounced
+search, and clicking a result to add) and the underlying mutation actually
+works correctly; the apparent brokenness was a real, separate UX gap: the
+search shows nothing at all while the 250ms debounce is in flight, and
+shows nothing (not even an empty state) when a query matches no
+candidates — indistinguishable from a silently broken input. Added
+`searching`/`searched` state to `MemberPicker` and two new caption rows,
+"Searching…" (while the debounced request is in flight) and "No matches"
+(query resolved, zero candidates) — both target
+`.memberResultStatus`. (Separately: my own first live-test pass on this
+item mis-clicked due to a screenshot/viewport coordinate-scaling mismatch
+in the browser tool, not an app bug — re-tested via DOM refs/JS dispatch
+once realized, confirming the actual handler was always correct.) (5)
+Danger zone border read as barely red against the already-pale
+`--sv-color-error-surface` fill — swapped `.dangerZoneBox`'s border color
+from `--sv-color-error-border` (a pale red, meant for subtle borders) to
+`--sv-color-error-solid` (a saturated red, normally reserved for solid
+error surfaces/icons), keeping the pale fill so the zone still reads as
+"contained danger" rather than a full alert block. All five verified live:
+screenshot + `getComputedStyle()`/DOM checks for each, including a real
+add-member round trip (member count 2→3) and both new search states.
+Full check suite clean (99/99 tests, typecheck, lint, design-tokens,
+prettier) — one first-draft `eslint-disable-next-line
+react-hooks/exhaustive-deps` comment had to be removed because this repo's
+ESLint config doesn't have that rule installed at all (`react-hooks`
+plugin absent), so the disable comment itself failed lint
+("Definition for rule ... was not found") — the effect's dependency array
+needed no suppression here since nothing enforces it.
+
+**Two DS-override regressions, reported together from a screenshot**: (1)
+`.newBoardCard`'s dashed border had gone missing — `Button`'s own base
+rule (`border: 1px solid transparent`) was winning over the plugin's
+`border: 1px dashed var(--sv-color-border-strong)` at equal specificity,
+same injection-order cause documented elsewhere in this file
+(`@sovereignfs/ui`'s stylesheet loads after the plugin's). Fixed with
+`!important` on both `border` and `border-radius`, matching
+`.addListCard`'s established precedent. (2) Board name text
+(`Typography variant="h4"`) rendered bold — h1–h4 all share the DS's
+semibold weight, too heavy for a small tile caption. Fixed by giving the
+board-name `Typography` its own `className` (`.boardCardName`, passed
+from `HomeView.tsx` alongside the existing `variant`/`as` props — not a
+bare `:global()` guess at the DS's hashed class name) with
+`font-weight: var(--sv-font-weight-regular) !important`, same
+injection-order reasoning as (1). Verified live: `getComputedStyle()`
+confirmed `border: 1px dashed …` on every "New board" tile across all
+three projects and `font-weight: 400` on board names ("Campaign Q1",
+"Sprint 12", etc.), plus a screenshot match. Full check suite clean
+(99/99 tests, pure CSS + one className prop, no logic changed).
+
+`0.20.1` → `0.20.2` swaps the manage-project trigger's bespoke `all: unset`
+button for the DS's real `Button` (`variant="ghost" size="sm"`) wrapping an
+`Icon name="settings" size="xs"` — the exact idiom `BoardView`'s own "Board
+options" ellipsis trigger already established, rather than a lookalike
+built from scratch. Prompted by developer feedback that the icon-only
+trigger felt visually inconsistent with Board View's labeled Share button
+one level down; the fix wasn't to match that specific button (a labeled
+`variant="secondary"` button repeated per project row would be too heavy
+for a list), but to reuse the *closest real precedent* for "small
+icon-only management trigger" already in this codebase, trading a few
+pixels of size (the DS's own `sm` padding, ~28–36px vs. the previous
+hand-tuned 20px) for real componentry — actual hover/focus/pressed states
+from `@sovereignfs/ui`, not hand-copied color tokens. `.projectManageButton`
+is now just an `align-self: center` override (the padded `Button` doesn't
+sit right on `.projectHeader`'s `baseline` alignment, tuned for the
+Typography name/caption pair) — no bespoke sizing/color CSS left at all.
+
+**A second visual regression, caught immediately by the developer from a
+screenshot**: the swap left an unintentionally wide gap on both sides of
+the icon (name→icon and icon→caption both read roughly double the row's
+intended rhythm). Same root cause `.boardOptionsMenu` already documents
+one level down: `.projectHeader`'s flex `gap` is structurally correct, but
+ghost `Button`'s own horizontal padding (`--sv-space-3`) insets the glyph a
+further step inside its own invisible button box, so the *visible* gap on
+each side reads as `gap + padding`, not just `gap`. Fixed with the exact
+same fix, reused rather than reinvented: `margin-left`/`margin-right:
+calc(-1 * var(--sv-space-3))` on `.projectManageButton`, cancelling the
+Button's own padding on both sides (this trigger has text on both sides,
+unlike the board-level one which only needed one side compensated).
+Verified live with a direct `getBoundingClientRect()` measurement, not
+just eyeballed — 0px external gap on both sides across all four project
+rows (Product Launch, Platform Engineering, Marketing, Test Project),
+meaning the *glyph* itself now sits exactly `--sv-space-3` from the
+adjacent text on both sides, matching every other gap in the row.
+
+**Still too loose per developer follow-up feedback** (a screenshot showing
+their own devtools live-edit of `.projectHeader`, demonstrating the wanted
+result directly): the negative-margin fix above was correct as far as it
+went, but `.projectHeader`'s own `gap` was still `--sv-space-3` (12px) —
+tightened to `--sv-space-2` (8px), and `align-items` changed from
+`baseline` to `center` (baseline suited plain Typography text but reads
+oddly once a padded `Button` sits between the name and caption). A third,
+independent issue in the same round: the ghost `Button`'s own
+`:hover:not(:disabled)` rule painted a visible gray background behind the
+icon on hover, which the developer explicitly wanted removed — fixed with
+`.projectManageButton:hover:not(:disabled) { background-color: transparent
+!important; }`, matching `.addListCard`'s own already-documented
+`!important`-override precedent for winning over a DS component's own
+rule (this build's CSS injection order puts `@sovereignfs/ui`'s stylesheet
+after the plugin's, so a plain override loses regardless of selector
+specificity). Verified live: screenshot matches the developer's own
+devtools preview exactly. Full check suite clean (99/99 tests, no logic
+changed) after all three rounds of this same UI polish pass.
+
+**Sidebar divider added** in the same pass, requested separately: a
+`.sidebarDivider` between the top Boards/Inbox nav and the "My
+projects"/"Shared with me" groups, reusing `sovereign-plugin-shopper`'s own
+`Sidebar.module.css` `.divider` values verbatim (`margin: var(--sv-space-2)
+var(--sv-space-4); border-top: 1px solid var(--sv-color-border);`) for
+visual consistency between the two plugins' sidebars — Shopper's own
+divider sits in a different spot (above its "Combined view" link, which
+Kanban has no equivalent of), so only the token values carried over, not
+the placement.
+
+**Divider spacing asymmetry, caught live from a developer screenshot**:
+the space above the divider (nav→divider) read visibly tighter than the
+space below it (divider→"My projects"). Root cause: `.sidebarGroup`
+already carried its own `margin-top: var(--sv-space-4)` (16px, predating
+the divider — originally what separated the top nav from "My projects" at
+all), so the space below the divider was stacking three things (the
+sidebar's own flex `gap`, the divider's own `margin-bottom`, *and* this
+group's `margin-top`) while the space above only had two. Fixed with a
+`.sidebarGroupAfterDivider` modifier (`margin-top: 0`) applied to "My
+projects" specifically — "Shared with me" (no divider directly above it)
+keeps the original `margin-top` unchanged, since it still needs it to
+separate from "My projects". Verified live via
+`getBoundingClientRect()`, not eyeballed: exactly 12px on both sides.
+
+**First-heading vertical alignment, requested separately**: the first
+project section's heading ("Product Launch") sat ~35px lower than the
+sidebar's own first link ("Boards"), even though both columns start at the
+same y-coordinate under `.contentRow`. Root cause: `PageContainer`'s
+default `padding="md"` top padding (`--sv-space-8` = 32px) is double
+`.sidebar`'s own top padding (`--sv-space-4` = 16px), and
+`.projectSection:first-of-type` added a further `--sv-space-4` (16px) on
+top of that. Fixed by flipping that same margin negative
+(`calc(-1 * var(--sv-space-4))`) rather than touching `PageContainer`
+itself — a shared platform-wide component, not something to special-case
+for one page's two-column alignment. Verified live via
+`getBoundingClientRect()`: delta closed from 35px to 3px (font-metrics
+residual between an `<a>` and an `<h2>` line box, imperceptible). Full
+check suite clean (99/99 tests) after this round too.
+
+**Home listing grouped into "My projects" / "Shared with me"**, matching
+`KanbanSidebar`'s own split (previously a flat list here while the sidebar
+already had two sections) — new `.projectGroup` wrapper per section in
+`HomeView.tsx`, each with an `h2` label (`.projectGroupLabel`) sized one
+level above the individual project `h3` headings. `getHomeData` (`queries.ts`)
+now sorts `projectRows` A–Z by `name.localeCompare(...)` instead of
+`created_at`, in JS rather than a SQL `orderBy` — SQLite's default `BINARY`
+collation is case-sensitive (every uppercase name would sort before every
+lowercase one), and the list is never large enough to need the DB to do the
+sorting. Sorting at the query source means both the sidebar and this
+listing get the same A–Z order for free, no duplicate sort logic.
+
+**The sidebar-alignment fix from the entry above had to move**: introducing
+`.projectGroup` as a wrapper changes what `.projectSection:first-of-type`
+matches — it now correctly means "first section within *each* group"
+(both groups' first section, not just the page's first section overall).
+The negative-margin compensation moved to `.projectGroup:first-of-type`
+instead, and `.projectSection:first-of-type` reverted to its original,
+un-hacked `margin-top: var(--sv-space-4)` (now correctly scoped per group).
+Re-verified live after the restructure: 0px delta between "My projects"
+and "Boards" (better than the 3px residual before — the `<h2>` "My
+projects" line box happens to match the `<a>` exactly this time). Full
+check suite clean (99/99 tests, no logic changed — only `getHomeData`'s
+sort comparator changed, no authz/action code touched).
+
+**Sidebar sticky + border-right ending partway, reported together (same
+underlying cause)**: `.body` (`app/layout.tsx`) is the shared scroll
+boundary for every page — Board View and Home alike — but on Home,
+`.sidebar` and `.main` are both inside it via `.contentRow`, so `.body`'s
+scroll carried the *whole row*, including the sidebar, instead of just
+`.main`'s content. A first attempt fixed this with `.sidebar { position:
+sticky; top: 0; }`, reasoning that `.contentRow`'s inherited `align-items:
+stretch` would size `.sidebar` to match `.main`'s full (taller) content,
+giving sticky "room" to stay pinned for the whole scroll range — this was
+verified live at a small forced-overflow viewport and looked correct, but
+was **live-tested wrong at a larger, more realistic overflow amount**: the
+developer reported directly, from a real screenshot, that the sidebar
+still scrolled away and the border-right still ended partway. Re-testing
+with an actual max-scroll (`main.scrollTop = main.scrollHeight`, not just
+a small forced overflow) showed the sticky sidebar's real height only
+tracked the *viewport* (352px), not the full content — so sticky ran out
+of room and the sidebar scrolled itself fully off-screen (`top: -352`
+measured). Fixed properly by abandoning `position: sticky` entirely for
+the standard two-independent-scroll-panes architecture: `.contentRow`
+gets `overflow: hidden; min-height: 0` to cap it at `.body`'s available
+height, and `.main`/`.sidebar` each get their own `overflow-y: auto` —
+neither column is part of any shared scrolling content, so neither can
+"run out of room" or leave the other behind. This also fixes the
+border-right ending partway, same root cause: `align-items: stretch` now
+sizes `.sidebar` to `.contentRow`'s own capped (viewport) height at all
+times, so the border always spans exactly the visible column. Re-verified
+live this time at absolute max scroll (not just a forced-overflow probe):
+confirmed via both `getBoundingClientRect()` and a screenshot that the
+sidebar's full project list stays rendered and unmoved while `.main`
+scrolls into "Marketing"/"Product Launch". Board View re-checked live too
+(shares `.body`, no `.sidebar` of its own) — unaffected, no console
+errors. Full check suite clean (99/99 tests, pure CSS change). Lesson
+worth keeping: a first live-test pass at a small, artificial overflow
+isn't sufficient to trust a scroll-behavior fix — this one only reproduced
+"wrong" at a larger overflow closer to a real usage.
+
+**Group label typography, developer follow-up on the same session**: the
+new `.projectGroup` `h2` labels ("My projects" / "Shared with me") used
+`variant="h2"`, sized one level above the `h3` project-name headings — but
+`Typography`'s h1–h4 variants share the same font-weight and differ only
+in size, so an h2 sitting directly above h3 project names and h4 board
+names read as barely distinguishable weight-wise, just a size step
+(developer: "section title and project names are a bit similar... all
+section title, project names, and board names are bold"). Swapped both
+labels to `variant="label" as="h2"` — the DS's small/uppercase/muted style,
+a genuinely different axis (colour + case, not just size) rather than
+another point on the same heading scale — matching `KanbanSidebar`'s own
+"MY PROJECTS"/"SHARED WITH ME" treatment for the identical semantic
+content; `as="h2"` keeps the real heading level for accessibility while
+using the label's visual style, the same pattern `ProjectSection`'s own
+project-name heading already uses (`variant="h3" as="h2"`). This shrank
+the label from a 20px heading to an 11px label, which shifted the
+first-group sidebar-alignment compensation (`.projectGroup:first-of-type`)
+out of calibration — re-measured live via `getBoundingClientRect()`
+(9.125px delta after the swap) and adjusted the negative margin from
+`calc(-1 * var(--sv-space-4))` to `calc(-1 * var(--sv-space-6))`;
+re-verified at 0.125px delta between "My projects" and the sidebar's
+"Boards" link. Full check suite clean (99/99 tests, no logic changed —
+pure Typography prop + one CSS value).
+
+`0.20.0` → `0.20.1` is a developer-requested redesign of K.19's own UI,
+landed the same day: three separate entry points into project management
+(sidebar's Edit/Delete/Share icons, K.19's own `ProjectShareDialog`)
+consolidated into one — a single settings-gear icon in the Home listing's
+project header (`HomeView.tsx`'s `ProjectSection`, right after the project
+name) opening one combined `ManageProjectDialog`: name/description/
+visibility, members (list + add-picker, unchanged from K.19), and a
+"Danger zone" section folding in delete (previously its own confirm-only
+dialog). Read-only for a non-owner (name/description/visibility as plain
+text, member list with no controls) — same "everyone can view, owner-only
+management" precedent K.9's `BoardShareDialog` established. The sidebar
+lost its own per-row icons entirely; it's pure navigation now (a deliberate
+call — two inconsistent entry points into overlapping state was worse than
+one). `EditProjectDialog`, `DeleteProjectConfirm`, and `ProjectShareDialog`
+are all deleted, not deprecated — `ManageProjectDialog.tsx` is the sole
+successor.
+
+Went through this repo's `sv-ui-design` wireframe-before-build process
+before any code: several placement options for the trigger icon
+(leading/trailing the name, hover-reveal, far-right) were wireframed as
+SVGs under `docs/adhoc/manage-project/`, sent to the developer, and
+iterated twice — the icon itself was swapped from `user-round-plus` to
+`settings` (more accurate once the CTA covers more than membership) and
+shrunk after live feedback that the first render was illegible at its
+initial size. Final: `settings` icon, right after the project name, board
+count still follows it.
+
+Verified live end-to-end: opened the combined dialog as an owner (edit
+form, members, danger zone all present) and as a plain member (read-only,
+no controls); saved a visibility change and confirmed the dialog stays
+open with a "Project updated" toast rather than closing (unlike the old
+standalone `EditProjectDialog`, since this dialog is meant to stay open
+across repeated actions, matching the members section's existing
+behavior); opened the nested delete confirm on top of the open dialog and
+cancelled it without deleting anything. Full check suite clean (99/99
+tests — no test changes were needed, since no authz/action logic changed,
+only how existing actions are composed into one surface); no
+`pnpm-lock.yaml` drift.
+
+**A mobile touch-target fix was added then reverted mid-session**: the new
+20px icon is under the DS's 44px `--sv-touch-target-min` minimum, a real
+gap on mobile (there's no separate mobile Home component — this same
+`ProjectSection` renders there too). An invisible expanded hit-area was
+added and verified working at a 375px viewport, then explicitly reverted
+per developer direction mid-session ("don't work on mobile UIs for now, we
+need to tackle them separately") — consistent with this phase's own
+"web only" scoping (CONCEPT.md's Phase 2 section). Left as a known,
+documented follow-up rather than fixed inline.
+
+`0.19.0` → `0.20.0` is K.19 — Project membership UI & sharing, the first
+Phase 2 task with a user-facing surface. Backend actions
+(`searchProjectMemberCandidates`, `addProjectMember`, `removeProjectMember`,
+`updateProjectMemberRole`), a new `ProjectShareDialog` (mirrors
+`BoardShareDialog`'s K.9 pattern, one tier up), and a visibility toggle on
+`EditProjectDialog`.
+
+**Ownership invariant, not present on boards**: unlike boards (never gained
+a promote-to-owner UI, so removing "the owner" was always just "the sole
+owner"), projects support co-owners, so `removeProjectMember` and
+`updateProjectMemberRole` both guard against a project ending up with zero
+owners (`countProjectOwners`) rather than just blocking self-removal.
+Stepping down as owner while another owner remains — including removing
+yourself — is allowed.
+
+**Deliberately not cascading**: removing someone from a project does NOT
+remove their independent `kanban_board_members` rows. A board membership
+is still separate access, same as Phase 1; project removal only affects
+K.18's `'viewer'` path and their eligibility for a NEW board (K.20). This
+was a real design choice, not an oversight — covered by its own test
+(`removes a member without touching their independent board access`).
+
+**A second real bug, found live** (after K.18's own live-found regression,
+this is becoming the pattern for this phase — unit tests keep passing while
+genuine UI staleness bugs slip through, since the test suite never
+round-trips through client state): added a member via the new
+`ProjectShareDialog`, and the dialog kept showing the pre-add list until a
+full page reload — the mutation had actually succeeded server-side
+(confirmed by reloading fresh), but the UI didn't reflect it. Root cause:
+`KanbanSidebar`'s `sharing` state stored the whole `HomeProject` object
+(`useState<HomeProject | null>`), captured at click-time — a stale
+snapshot that a `revalidatePath()`-driven prop refresh doesn't update,
+exactly K.8's `CardActivity` staleness bug from Phase 1. `BoardShareDialog`
+never has this problem because `BoardView` only keeps a `boolean` toggle
+and passes its own `board` prop straight through — the prop itself is what
+gets fresh data on refresh, not a copy. Fixed by changing `sharing` to
+`sharingId: string | null` and deriving the live object from `projects`
+(already a prop, already fresh) on every render, matching `BoardView`'s
+pattern instead of `editing`/`deleting` (safe to keep as full-object state,
+since those dialogs submit-and-close rather than staying open across
+repeated mutations).
+
+**A related UI-scope fix, opened up by K.18 becoming reachable rather than
+theoretical**: `KanbanSidebar`'s "My projects"/"Shared with me" split and
+`HomeView`'s "New board" button were still gated on `isCreator`
+(`created_by === actor.userId`), left over from Phase 1 when creator and
+owner were always the same person. Once this task added the first way to
+promote a co-owner, a co-owner who didn't create the project would have had
+no way to edit/delete the project or create a board — despite the backend
+(`requireProjectOwner`, K.18) already allowing it. Moved both to
+`role === 'owner'`, matching backend truth; `isCreator` itself is untouched
+as a data field.
+
+Verified end-to-end live, not just via the unit suite: opened
+`ProjectShareDialog` from both "My projects" (owner — full management) and
+"Shared with me" (member — view-only, matches K.9's "every member can view,
+owner-only management" precedent); searched and added a real dev-seed user
+via the picker; promoted/demoted via "Make owner"/"Make member"; removed a
+member and watched the list update immediately (post-fix); toggled a
+project's visibility to Private and confirmed the change persisted across
+a dialog reopen, then reverted it. 99/99 tests passing (90 K.17/K.18 +
+9 new K.19 tests: denial-without-side-effects, add + notification, reject
+duplicate/unknown, no-cascade-on-removal, last-owner protection on both
+removal and demotion, promote-then-remove-original-owner, search
+exclusion, and `updateProject`'s `visibility` field immediately changing
+`getBoardData`'s viewer resolution). Typecheck, lint, design-tokens-check
+all clean; no `pnpm-lock.yaml` drift.
+
+`0.18.0` → `0.19.0` is K.18 — Project & board access authz (view vs.
+edit), the task that actually makes K.17's schema do something. Three
+pieces:
+
+**Authz primitives** (`_lib/authz.ts`): `getProjectRole`/
+`requireProjectMember`/`requireProjectOwner`, mirroring the existing board
+helpers exactly. `requireProjectCreator` is gone — every call site
+(`updateProject`, `deleteProject`, `createBoard`) now uses
+`requireProjectOwner`, so any co-owner can manage a project, not just its
+original creator. `createProject` now wraps its insert and a
+`kanban_project_members` owner-row insert in one transaction — without
+this, a brand-new project would have no owner row until K.19's UI existed
+to add one, and `createBoard`'s new `requireProjectOwner` check would deny
+the very person who just created the project. Caught this by reasoning
+through the sequencing before writing any code, not by hitting it live.
+
+**Read path** (`_lib/queries.ts`): `getBoardData`'s single membership-gated
+query became a `leftJoin` plus a fallback resolution — explicit
+`kanban_board_members` role unchanged (`'owner'`/`'member'`), or a new
+`'viewer'` via `getProjectRole` (project owner on any board, or project
+member when both project and board are `'public'`), or `null` (project
+`'private'` overrides an individual board's own `'public'` flag, exactly
+per CONCEPT.md's Phase 2 table). `getHomeData` rewritten to source "my
+projects" from `kanban_project_members` instead of created-by/board-
+membership-derived, with each project's board list including explicit
+memberships plus any boards the actor can merely view. **Edit gates are
+completely untouched** — every mutation action still calls
+`requireBoardMember`/`requireBoardOwner`/`requireCardAccess`/
+`requireListAccess` directly against `kanban_board_members` alone, which
+never produces `'viewer'`, so `'viewer'` denies every mutation the exact
+same way a stranger would. Audited every existing `role === 'owner'` UI
+check (`BoardShareDialog`, `BoardView`'s settings/label management) per the
+task's own review checklist — all of them are positive `=== 'owner'`
+comparisons, none use a `!== 'owner'` pattern that `'viewer'` could slip
+through, so none needed to change.
+
+**A real regression, found live, not by the unit suite**: after this
+shipped, "Platform Engineering" (a dev-seed project deliberately built to
+model "target user is a board member, not the project creator" — see
+`scripts/seed.ts`'s own comment) vanished from "Shared with me" on a live
+reload. Root cause: the seed script predates K.17 and only ever inserted
+`kanban_board_members` rows, never `kanban_project_members` — exactly the
+legacy state Phase 2 makes unreachable going forward (a board member must
+now be a project member first), but the old seed data still modeled the
+Phase-1-only shape. The six new authz unit tests (real generated
+migrations, not mocks) never caught this because they seed their own
+membership rows directly and don't touch `scripts/seed.ts` at all. Fixed
+the seed script itself, not the authz logic: `addProject` now seeds the
+creator as project owner, and `addBoard` seeds every board member as a
+project member too (`onConflictDoNothing()` covers the owner and anyone
+already added via an earlier board in the same project) — reproducing the
+same "shared via board access" demo scenario the way K.19/K.20's real UI
+flow will actually produce it. Reran the seed script with `--reset` and
+confirmed live: "Platform Engineering" reappeared under "Shared with me",
+its board rendered fully, and a plain board `'member'`'s own board (no
+ownership) still renders with full edit affordances — unaffected by any of
+this. Full suite: 90/90 tests passing (84 Phase 1 + 6 new K.18 authz
+tests), typecheck and lint clean, no `pnpm-lock.yaml` drift.
+
+**Known, deliberate gap until K.21 ships**: a `'viewer'` board renders with
+the *same* editable UI as a real member today — no read-only mode exists
+yet. Attempting a mutation is correctly denied server-side (the edit gates
+above), but the UX (a button that silently fails or throws a toast) is
+confusing until K.21's read-only mode lands. This is the explicit
+sequencing call already recorded in this file's K.18/K.21 task
+descriptions and `ROADMAP.md`'s rationale — not a bug to fix here.
+
+`0.17.2` → `0.18.0` is K.17 — Project members & visibility schema, the
+first Phase 2 task (see CONCEPT.md's "Phase 2" section for the decided
+product rules, and this file's Data model section for the schema detail).
+Adds `kanban_project_members` (mirrors `kanban_board_members` — `owner`/
+`member`, multiple owners) and a `visibility` column (`'public' |
+'private'`, default `'public'`) on `kanban_projects` and `kanban_boards`.
+Generated migrations for both dialects via `drizzle-kit generate`; the new
+table's Postgres `created_at` column uses `bigint({ mode: 'number' })` from
+the start, applying the lesson from `0.17.1`'s incident rather than
+repeating it on a table that didn't exist yet. Migration includes a
+hand-written backfill (`INSERT ... SELECT`, added on top of drizzle-kit's
+generated DDL, same pattern `docs/plugin-database.md` documents for
+Postgres FK-qualifier stripping): one `owner` row per existing project,
+seeded from `created_by`. Not a data-preservation backfill for other
+users' access — this instance only has one user today — it's what lets
+K.18's authz layer resolve ownership for projects that existed before this
+table did. **Verified against the live dev database, not just the unit
+test suite**: `app/_db/__tests__/schema.test.ts` only exercises a fresh
+in-memory DB via `createTestDb()`, which has no pre-existing projects to
+backfill, so it can't actually prove the backfill logic works — restarted
+the local `pnpm dev` runtime (triggering its startup migration run against
+the already-seeded dev sqld namespace, several real projects including
+"Product Launch" and "Platform Engineering" from earlier manual testing),
+then queried the plugin's isolated sqld namespace directly
+(`plugin_fs_sovereign_kanban` via the `x-namespace` header) to confirm
+every existing project got exactly one `owner` row in
+`kanban_project_members` matching its `created_by`, `visibility` defaulted
+to `'public'` on every existing row, and `kanban_boards` gained the new
+column — all while the plugin's Home page continued rendering the same
+projects with zero errors. This is schema-only: nothing reads
+`kanban_project_members` or either `visibility` column yet — every action
+still enforces exactly the Phase 1 rules (see Data model's Access model
+note). K.18 is what actually changes access behavior.
 
 `0.17.1` → `0.17.2` fixes a second production bug found immediately after
 `0.17.1` unblocked project creation on the same user's deployment: opening
@@ -1140,9 +2191,13 @@ table. Timestamps (`created_at`, `updated_at`) on every table; soft-delete is
 **not** used in Phase 1 — deletes cascade.
 
 ```
-kanban_projects         id, tenant_id, name, description, created_by, timestamps
-kanban_boards           id, project_id, name, color, created_by, timestamps
+kanban_projects         id, tenant_id, name, description, created_by,
+                        visibility ('public' | 'private'), timestamps
+kanban_boards           id, project_id, name, color, created_by,
+                        visibility ('public' | 'private'), timestamps
 kanban_board_members    board_id, user_id, role ('owner' | 'member'), added_by, created_at
+kanban_project_members  project_id, user_id, role ('owner' | 'member'), added_by,
+                        created_at
 kanban_lists            id, board_id, name, position, timestamps
 kanban_cards            id, board_id, list_id, title, description, due_date,
                         position, created_by, timestamps
@@ -1171,10 +2226,35 @@ Notes:
   `kanban_card_labels`.
 - **Comments support one level of replies** via nullable `parent_id`
   (a reply cannot itself be replied to in Phase 1 — flatten deeper intents).
-- **Access model:** project creator manages the project; board access is via
-  `kanban_board_members` (creator becomes `owner`). Every board/card action
-  verifies membership; every project mutation verifies creator. Phase 1 has
-  no project-level member list — sharing happens per board.
+- **Access model (Phase 1):** project creator manages the project; board
+  access is via `kanban_board_members` (creator becomes `owner`). Every
+  board/card action verifies membership; every project mutation verifies
+  creator. Phase 1 has no project-level member list — sharing happens per
+  board.
+- **Access model (Phase 2, see CONCEPT.md's "Phase 2" section for the
+  decided rules):** `K.17` (shipped) adds `kanban_project_members` (mirrors
+  `kanban_board_members` — `owner`/`member`, multiple owners allowed) and a
+  `visibility` column (`'public' | 'private'`, default `'public'`) on both
+  `kanban_projects` and `kanban_boards`, plus a migration seeding one
+  `owner` row per existing project. The schema exists but nothing reads it
+  yet — `K.18` is what actually changes access behavior (the view/edit
+  split, `getBoardData`'s three-tier role resolution, `getHomeData`
+  reading from the new table). Until `K.18` ships, every action still
+  enforces exactly the Phase 1 rules above; `visibility` and
+  `kanban_project_members` are inert. Board-add will be sourced from
+  project members only once `K.20` ships, never a fresh directory search.
+  Edit rights don't change in this phase at all — still strictly
+  `kanban_board_members` — the new tier only ever *adds* a read-only view
+  path (project owner, or project+board both `public`), never a new edit
+  path. `created_by` on `kanban_projects` remains a historical "who created
+  this" field; ownership authority moves to `kanban_project_members` rows,
+  since projects support co-owners. **Postgres timestamp columns on the new
+  table use `bigint({ mode: 'number' })`, never `integer`, in
+  `schema.postgres.ts`** — see this file's `0.17.1`/`0.17.2` Status entries
+  for why plain `integer` overflows immediately on Postgres for any real
+  Unix-ms timestamp; verified directly against the live dev database (not
+  just unit tests) that the migration both applies cleanly to a fresh DB
+  and correctly backfills an already-populated one.
 
 ## Data fetching contract
 
@@ -1224,16 +2304,18 @@ Notifications (`sdk.notifications.send()`) fire for events *about other
 users*: you were assigned, your card was commented on, you were added to a
 board, a card you're assigned to is due soon (due-soon delivery itself is
 Phase 2 — Phase 1 records the data). Notification URLs deep-link to
-`/kanban/boards/<id>?card=<id>`. The Inbox screen renders the plugin's own
-activity feed (board-scoped `kanban_activity` for boards you're a member of),
-not the platform bell — the two complement each other.
+`/kanban/b/<id>?card=<id>` (renamed from `/kanban/boards/<id>` — see the
+Status section's own entry; no redirect from the old path, a deliberate
+developer choice). The Inbox screen renders the plugin's own activity feed
+(board-scoped `kanban_activity` for boards you're a member of), not the
+platform bell — the two complement each other.
 
 ## Routes
 
 ```
 /kanban                      Home (Boards overview)          [web + mobile]
 /kanban/inbox                Inbox                           [web + mobile]
-/kanban/boards/[boardId]     Board view                      [web + mobile]
+/kanban/b/[boardId]          Board view                      [web + mobile]
   ?card=<cardId>             Card detail overlay (URL-addressable)
 ```
 
@@ -1408,9 +2490,10 @@ work end-to-end.
 
 **Dependencies:** K.5.
 
-**Review checklist:** deep link `/kanban/boards/<id>?card=<id>` opens the
-modal cold; every edit persists and reflects in the board's card tile;
-checklist quick-entry commits on Enter and blur.
+**Review checklist:** deep link `/kanban/b/<id>?card=<id>` (renamed from
+`/kanban/boards/<id>` post-launch — see Status) opens the modal cold; every
+edit persists and reflects in the board's card tile; checklist quick-entry
+commits on Enter and blur.
 
 ---
 
@@ -1622,3 +2705,181 @@ to…" round-trip works; no stuck hover states after touch.
 **Review checklist:** demo script exercised end-to-end on web and simulator;
 no console errors/warnings on any surface; large-board numbers recorded in
 the PR.
+
+---
+
+### Phase 2 — Project & board membership + visibility
+
+See CONCEPT.md's "Phase 2" section for the decided product rules this
+implements. Web only — mobile read-only parity is a documented follow-up,
+not part of K.17–K.22.
+
+---
+
+#### K.17 — Project members & visibility schema
+
+**Goal:** The data layer Phase 2 builds on.
+
+**Deliverables:**
+
+- `kanban_project_members` table (`project_id, user_id, tenant_id, role
+  ('owner' | 'member'), added_by, created_at`), structurally mirroring
+  `kanban_board_members`.
+- `visibility` column (`'public' | 'private'`, default `'public'`) on both
+  `kanban_projects` and `kanban_boards`.
+- Generated migrations for both dialects. `schema.postgres.ts`'s new
+  `created_at` column uses `bigint({ mode: 'number' })` from the start — not
+  plain `integer` (see this file's `0.17.1`/`0.17.2` Status entries for why
+  that overflows immediately on Postgres).
+- Migration seeds one `kanban_project_members` row per existing project:
+  its `created_by` user as `owner`. Required regardless of install size —
+  it's what lets `K.18`'s authz layer resolve ownership for
+  already-existing projects at all, not a data-preservation backfill for
+  other users' access (there is none to preserve on this instance today).
+
+**Dependencies:** K.16.
+
+**Review checklist:** migrations run clean on a fresh dev DB and on the
+existing seeded dev DB (backfill verified); Postgres migration reviewed for
+the `bigint`-timestamp convention; no `runtime/src` imports.
+
+---
+
+#### K.18 — Project & board access authz (view vs. edit)
+
+**Goal:** A read path that can tell "can edit," "can view only," and "no
+access" apart, without touching any existing edit-authorization code.
+
+**Deliverables:**
+
+- `getProjectRole`/`requireProjectOwner`/`requireProjectMember` in
+  `_lib/authz.ts`, mirroring the existing board helpers.
+- `createBoard` moves from `requireProjectCreator` to `requireProjectOwner`
+  (any co-owner, not just the original creator).
+- `getBoardData`'s role resolution becomes three-tier: `'owner' | 'member'`
+  (unchanged — still strictly `kanban_board_members`) or new `'viewer'`
+  (project owner on any board, or project member when both the project and
+  the board are `'public'`). `BoardData['role']` type gains `'viewer'`.
+- Audit of every existing `role === 'owner'` / owner-only branch (board
+  settings, label management, share dialog) to confirm `'viewer'` denies
+  the same way `'member'` already does — no code should need to change here
+  if the audit passes, since `'viewer'` was never a possible value before.
+- `getHomeData` rewritten to source "my projects" from
+  `kanban_project_members` (owner or member) instead of
+  created-by/board-membership-derived; within each project, board list
+  includes explicit board memberships plus any `'viewer'`-eligible boards.
+
+**Dependencies:** K.17.
+
+**Review checklist:** authz unit tests prove (a) a non-member/non-viewer
+still gets denied everywhere Phase 1 already denied them, (b) a project
+owner can read but not mutate a board they're not a member of, (c) a
+project member sees a public board in a public project read-only, (d) a
+private project hides a `'public'`-flagged board from a non-board-member
+project member entirely.
+
+---
+
+#### K.19 — Project membership UI & sharing
+
+**Goal:** Real multi-user projects.
+
+**Deliverables:**
+
+- New project share dialog (mirrors `BoardShareDialog`'s K.9 pattern):
+  list members, add by directory picker (the search moves here from the
+  board dialog), remove, owner-only management, promote/demote co-owner.
+- `createProject` auto-adds the creator as project `owner`.
+- Project visibility toggle (`public`/`private`) in project settings.
+- Notifications: added-to-project, via `sdk.notifications.send()`.
+
+**Dependencies:** K.18.
+
+**Review checklist:** two-user manual test — inviting to a project works
+end-to-end with a working notification deep link; only owners can manage
+project members or promote a co-owner; visibility toggle persists.
+
+---
+
+#### K.20 — Board membership UI & board visibility
+
+**Goal:** Board sharing sourced from the project, not the directory.
+
+**Deliverables:**
+
+- ✅ `BoardShareDialog`'s add-picker changes from `sdk.directory.searchUsers`
+  to a plain list of "project members not yet on this board" — no more
+  live directory search inside a board. Shipped ahead of the rest of this
+  task (manifest `0.20.3`, see the Status section's own entry) as
+  `getBoardMemberCandidates`, developer-requested directly alongside two
+  unrelated `BoardShareDialog` asks (a visible title, a copy-URL row) that
+  aren't part of this task's own scope. `addBoardMember` itself also now
+  enforces project membership server-side, not just in the picker — not
+  originally listed as a separate deliverable here, but required by this
+  repo's own "route/UI gating is never sufficient" convention once the
+  picker stopped being the only path to calling that action.
+- ⬜ Board-membership management stays open to that board's own owner(s)
+  and is additionally opened to any project owner.
+- ⬜ Board visibility toggle (`public`/`private`) in the board options menu.
+
+**Dependencies:** K.19.
+
+**Review checklist:** adding a non-project-member to a board is impossible
+through the UI (picker never lists them) — ✅ done, and also now
+impossible through the action directly, a stronger guarantee than this
+checklist item asked for; a project owner who isn't a board owner can
+still add/remove that board's members — ⬜ not yet; visibility toggle
+persists and is reflected in K.18's access checks immediately — ⬜ not yet.
+Task stays ⬜ in `ROADMAP.md` until the remaining two deliverables ship.
+
+---
+
+#### K.21 — Read-only view mode (web)
+
+**Goal:** A `'viewer'` can see a board fully and touch nothing.
+
+**Deliverables:**
+
+- A `canEdit` flag (`role !== 'viewer'`) threaded through every interactive
+  board component: `BoardView`, `ListColumn`, `CardDetailOverlay`,
+  `CardChecklist`, `CardComments`, `CardLabels`, `CardAssignees`,
+  `CardDueDate`, `QuickAddCard`, `AddListSlot`, `MoveCardDialog`.
+- Drag-and-drop disabled entirely for viewers (no sensors registered, or a
+  no-op drop handler — whichever keeps the dnd-kit wiring simplest).
+- Every mutation affordance (add/edit/delete, checklist toggles, comment
+  input, label/assignee/due-date editors, list/card option menus, Share
+  CTA) hidden or disabled for viewers rather than merely failing silently
+  on submit.
+- Home page board tiles show a "view only" indicator for boards the actor
+  can see but not edit.
+
+**Dependencies:** K.20.
+
+**Review checklist:** a project-owner-only viewer can open every part of a
+board (lists, cards, checklist, comments, activity) with zero console
+errors and zero visible mutation affordances; attempting a mutation via
+direct action call (not just the hidden UI) still gets denied server-side
+by K.18's unchanged edit gates.
+
+---
+
+#### K.22 — Phase 2 hardening & verification pass
+
+**Goal:** Close the gaps a feature-by-feature build leaves, mirroring K.16's
+role for Phase 1.
+
+**Deliverables:**
+
+- End-to-end verification of the full visibility matrix (CONCEPT.md's
+  Phase 2 table) with a second real test user/tenant, not just unit tests.
+- Loading/empty/error state audit for the new project-share and
+  board-visibility surfaces.
+- A11y pass on the new dialogs and read-only affordances (viewers still
+  need working keyboard/focus paths, just no mutation controls).
+- SPEC.md/CONCEPT.md/ROADMAP.md reconciled against what actually shipped.
+
+**Dependencies:** K.17, K.18, K.19, K.20, K.21.
+
+**Review checklist:** demo script exercised end-to-end covering every row
+of the visibility matrix with two real users; no console errors/warnings;
+docs match shipped behavior.
