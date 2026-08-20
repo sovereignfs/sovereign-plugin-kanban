@@ -8,10 +8,99 @@
 ## Status
 
 ✅ Phase 1 complete — K.1–K.16 shipped. 🚧 Phase 2 in progress — K.17–K.19
-shipped, manifest at `0.20.8`; K.20 partially shipped within the same
+shipped, manifest at `0.21.0`; K.20 partially shipped within the same
 version (see its own entry below and the ⬜/✅ breakdown in K.20's own
 task section) — full K.20 completion is still pending, not yet a version
 bump of its own.
+
+**Comprehensive board color picker (0.20.8 → 0.21.0), developer-requested:
+"for color pallet we have for boards is limited and curated list... show a
+few background color suggestions as we have now, and then a color pallet
+which user can pick any color they want."** Kept the 12 curated swatches as
+quick-pick suggestions, unchanged, and added a genuine arbitrary-color
+picker alongside them rather than only expanding the curated set further.
+
+**New `@sovereignfs/ui` component: `ColorPicker`** (`packages/ui`, now
+`0.61.0`) — a row of curated swatch buttons plus a native
+`<input type="color">` trigger for picking any color. Deliberately not a
+custom-built hue/saturation canvas (a real design/engineering tradeoff,
+confirmed with the developer before building): every browser's own picker
+already gives a full spectrum (with an eyedropper tool in most), guarantees
+valid hex output, and needs no bespoke a11y work — appropriate for a design
+system that's otherwise deliberately monochrome. The custom trigger renders
+as an ordinary swatch-sized button (native chrome fully reset via
+`::-webkit-color-swatch`/`::-moz-color-swatch`) with a small pencil badge,
+showing the active custom color on its own dial whenever the current value
+doesn't match any curated swatch. `allowNone` opt-in for board's own
+"no color" case (a chip-painting consumer would never want this). New
+Storybook story, new `__tests__/ColorPicker.test.tsx` (11 cases), added to
+`DesignSystemOverview.stories.tsx`'s Component Gallery.
+
+**Data model: no schema migration.** `boards.color` was already a plain
+`text` column storing an opaque string — previously always a curated
+palette id (`'sky'`, `'ink'`, …) or the `'none'` sentinel. Custom colors are
+distinguishable for free (hex always starts with `#`, no curated id does),
+so `_lib/palette.ts` was extended rather than replaced: new `isHexColor`
+(strict `/^#[0-9a-f]{6}$/i`) and `computeTextOn` (WCAG contrast ratio
+against pure black/white — the programmatic equivalent of each curated
+swatch's hand-picked `textOn`, verified in tests to agree with all 12).
+`boardColorValue`/`resolveBoardColor` both now check `isHexColor` before
+falling back to the curated-id lookup; `isBoardColorOrNone` (board
+validation) now also accepts a valid hex. **`isBoardColor` (label
+validation, unchanged) deliberately does not** — labels have no
+custom-color affordance in their own picker dialog, so silently widening
+their validation too would have been unrequested scope creep with no UI to
+justify it. New writes always store the picker's own hex output going
+forward (curated picks included, not just custom ones) — simpler than
+reverse-mapping a hex back to its matching curated id, and existing rows
+storing legacy ids keep resolving correctly through the unchanged fallback
+path; nothing else in the codebase reads `board.color` expecting an id
+specifically (checked).
+
+**Security, addressed proactively before shipping, not found as a bug
+afterward:** `app/b/[boardId]/page.tsx` interpolates the resolved board
+color directly into a `<style>:root{...}</style>` tag — previously safe
+"because the palette is fixed/curated, never user-authored text" (the
+comment's own words). That argument no longer holds once colors are
+user-chosen, so the comment was rewritten to state the actual current
+safety argument: `resolveBoardColor` only ever returns a curated swatch's
+own hex or a value that already passed `isHexColor`'s strict pattern check;
+anything else falls back to the first swatch rather than reaching the
+`<style>` tag as-is. Both `createBoardForm`/`updateBoardForm` (the only
+write paths reachable from the UI) already ran color through
+`isBoardColorOrNone` before this change; that gate now also covers hex.
+Verified live, not just by unit test: submitted a value carrying a
+CSS-injection payload (`#fff} body{background:red};</style><script>...`)
+directly through the board settings form (bypassing the picker UI via the
+hidden form field), confirmed the server rejected it with "Pick a color for
+the board.", the board's own color was unchanged, and no script/style
+executed or leaked into the page.
+
+Verified live end-to-end beyond the injection check above: created a board
+with a custom hex via the native color-input trigger, confirmed it
+persisted and rendered on both the board canvas and the home page's board
+card banner; opened Board Settings on that same board and confirmed the
+custom color loads back as the active selection (not silently falling back
+to a curated swatch); switched from custom to a curated swatch and
+confirmed the custom trigger's own dial reverts to a neutral idle color
+(no longer reading as "active"); saved "No color" and confirmed the canvas
+returns to neutral; checked a real 375px mobile viewport (New board dialog)
+— the picker row wraps cleanly to two lines, no overflow. Full check suite
+green across both repos: typecheck, `pnpm exec eslint`, `pnpm exec prettier
+--check`, `pnpm design:tokens:check`, and `pnpm exec vitest run` (579
+tests, 81 files, all passing).
+
+**Found in passing, not fixed here — flagged as a separate follow-up:**
+`PaletteColor.textOn` (and `computeTextOn` for custom colors) is computed
+by `resolveBoardColor` but not actually consumed anywhere in the current
+rendering code — grepped the whole app, no callsite reads `.textOn`. In
+practice this means the board canvas's own empty state ("Add your first
+list"), which paints text directly on the raw board-color background with
+no card/surface behind it, doesn't adapt its text color for a dark board
+color (curated or custom) — a pre-existing gap, not a regression from this
+change (a curated dark swatch like "Charcoal" hits the same issue today).
+Out of scope for this task since it wasn't reported and isn't something the
+custom-color addition makes meaningfully worse.
 
 **Card title wraps instead of overflowing (0.20.7 → 0.20.8).** Reported
 directly, with a screenshot: a long card title stayed on one line and ran
