@@ -1,12 +1,14 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { Dialog, FormField, Icon, Input, Typography } from '@sovereignfs/ui';
+import { ColorPicker, Dialog, FormField, Input, Typography } from '@sovereignfs/ui';
 import { updateBoardForm } from '../actions';
-import { BOARD_COLOR_NONE, BOARD_COLORS } from '../_lib/palette';
+import { BOARD_COLOR_NONE, BOARD_COLORS, boardColorValue } from '../_lib/palette';
 import type { BoardData } from '../_lib/queries';
 import styles from '../kanban.module.css';
 import { DialogActions, useCloseOnSuccess } from './form-dialog';
+
+const SWATCHES = BOARD_COLORS.map((c) => ({ label: c.name, value: c.value }));
 
 export function BoardSettingsDialog({
   board,
@@ -16,7 +18,14 @@ export function BoardSettingsDialog({
   onClose: () => void;
 }) {
   const [state, formAction, pending] = useActionState(updateBoardForm, null);
-  const [color, setColor] = useState(board.color);
+  // Stored as a hex value (or the 'none' sentinel) from here on, regardless
+  // of whether the board's own `color` column holds a legacy curated id
+  // (older rows) or an already-hex value (new writes, including custom
+  // picks) — `boardColorValue` resolves either the same way ColorPicker
+  // needs it: a real hex to show as selected/checked.
+  const [color, setColor] = useState(
+    board.color === BOARD_COLOR_NONE ? BOARD_COLOR_NONE : boardColorValue(board.color),
+  );
   useCloseOnSuccess(state, onClose);
 
   return (
@@ -32,42 +41,14 @@ export function BoardSettingsDialog({
         </FormField>
         <FormField label="Color">
           {() => (
-            <div className={styles.swatchRow} role="radiogroup" aria-label="Board color">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={color === BOARD_COLOR_NONE}
-                aria-label="No color"
-                title="No color"
-                disabled={pending}
-                className={[
-                  styles.swatch,
-                  styles.swatchNone,
-                  color === BOARD_COLOR_NONE ? styles.swatchSelected : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                onClick={() => setColor(BOARD_COLOR_NONE)}
-              >
-                <Icon name="x" size="sm" aria-hidden={true} />
-              </button>
-              {BOARD_COLORS.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={color === c.id}
-                  aria-label={c.name}
-                  title={c.name}
-                  disabled={pending}
-                  className={[styles.swatch, color === c.id ? styles.swatchSelected : '']
-                    .filter(Boolean)
-                    .join(' ')}
-                  style={{ backgroundColor: c.value }}
-                  onClick={() => setColor(c.id)}
-                />
-              ))}
-            </div>
+            <ColorPicker
+              swatches={SWATCHES}
+              value={color === BOARD_COLOR_NONE ? null : color}
+              onChange={(value) => setColor(value ?? BOARD_COLOR_NONE)}
+              allowNone
+              disabled={pending}
+              aria-label="Board color"
+            />
           )}
         </FormField>
         {state && !state.ok && <p className={styles.formError}>{state.error}</p>}

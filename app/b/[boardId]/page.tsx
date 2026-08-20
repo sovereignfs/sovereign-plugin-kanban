@@ -50,11 +50,16 @@ export default async function BoardPage({
           JS/flash-of-neutral needed, and it's automatically removed (every
           property reverts to its fallback) when navigating away from this
           page, since React unmounts it along with the rest of this page's
-          output. Board colors are a fixed, curated palette (never
-          user-authored text), so this interpolation is safe. Deliberately
-          the literal board hex, not a semantic token — this canvas color
-          stays constant across light/dark theme; only card/list surfaces
-          sitting on top of it adapt. */}
+          output. Board colors can now be a user-chosen custom hex, not just
+          the curated palette — this interpolation stays safe because
+          `resolveBoardColor` (palette.ts) only ever returns a curated
+          swatch's own hex or a value that already passed `isHexColor`'s
+          strict `/^#[0-9a-f]{6}$/i` check; anything else (including
+          malformed data that somehow bypassed `isBoardColorOrNone` at
+          write time) falls back to the first swatch instead of reaching
+          here as-is. Deliberately the literal board hex, not a semantic
+          token — this canvas color stays constant across light/dark theme;
+          only card/list surfaces sitting on top of it adapt. */}
       {resolvedColor && (
         <style>{`:root {
           --kanban-board-color: ${resolvedColor.value};
