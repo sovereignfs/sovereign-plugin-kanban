@@ -45,6 +45,7 @@ export const projects = pgTable(
     name: text('name').notNull(),
     description: text('description'),
     createdBy: text('created_by').notNull(),
+    visibility: text('visibility').notNull().default('public'),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
@@ -62,6 +63,7 @@ export const boards = pgTable(
     name: text('name').notNull(),
     color: text('color').notNull(),
     createdBy: text('created_by').notNull(),
+    visibility: text('visibility').notNull().default('public'),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
@@ -83,6 +85,24 @@ export const boardMembers = pgTable(
   (t) => [
     primaryKey({ columns: [t.boardId, t.userId] }),
     index('kanban_board_members_user_idx').on(t.userId),
+  ],
+);
+
+export const projectMembers = pgTable(
+  'kanban_project_members',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    tenantId: text('tenant_id').notNull(),
+    role: text('role').notNull(),
+    addedBy: text('added_by').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.projectId, t.userId] }),
+    index('kanban_project_members_user_idx').on(t.userId),
   ],
 );
 

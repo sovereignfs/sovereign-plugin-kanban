@@ -41,8 +41,9 @@ export function CardComments({
 
   return (
     <section className={styles.cardSection}>
-      <Typography variant="label">Comments</Typography>
-
+      {/* No "Comments" label here — the tab strip above (`CardCommentsActivity`)
+          already names this section on both surfaces now; a second label
+          directly under an already-selected tab was pure duplication. */}
       {topLevel.length === 0 ? (
         <Typography variant="caption" className={styles.descriptionPlaceholder}>
           No comments yet.
@@ -102,10 +103,11 @@ function CommentRow({
 }) {
   const [replying, setReplying] = useState(false);
   const author = displayName(comment.authorId, currentUser, members);
+  const authorImage = members.find((m) => m.userId === comment.authorId)?.image ?? undefined;
 
   return (
     <div className={styles.commentRow}>
-      <Avatar name={author} size="sm" />
+      <Avatar name={author} src={authorImage} size="sm" />
       <div className={styles.commentBody}>
         <div className={styles.commentMeta}>
           <Typography variant="body" as="strong">
@@ -115,7 +117,18 @@ function CommentRow({
             <TimeAgo ms={comment.createdAt} />
           </Typography>
         </div>
-        <Typography variant="body">{comment.body}</Typography>
+        {/* `.commentText` (`white-space: pre-wrap`) — same underlying bug
+            class as the card description's own `Markdown` fix: a comment
+            is written in a plain multi-line `<textarea>`
+            (`CommentComposer` below), but rendered here as ordinary text,
+            whose CSS default (`white-space: normal`) collapses every
+            typed newline into a single space, same as any plain HTML
+            text node. Not routed through `Markdown` — a comment isn't
+            markdown source, just plain text that needs its own line
+            breaks preserved. */}
+        <Typography variant="body" className={styles.commentText}>
+          {comment.body}
+        </Typography>
         {canReply && (
           <div className={styles.commentActions}>
             <Button variant="ghost" size="sm" onClick={() => setReplying((v) => !v)}>

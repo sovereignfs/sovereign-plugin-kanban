@@ -39,15 +39,28 @@ export function CardLabels({
         ))}
         <Popover
           trigger={
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label="Edit labels"
-              onClick={() => setOpen((v) => !v)}
-              className={styles.chipAddButton}
-            >
-              <Icon name="plus" size="sm" aria-hidden={true} />
-            </Button>
+            card.labels.length === 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Add labels"
+                onClick={() => setOpen((v) => !v)}
+                className={styles.chipAddTextButton}
+              >
+                <Icon name="plus" size="sm" aria-hidden={true} />
+                Add label
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Edit labels"
+                onClick={() => setOpen((v) => !v)}
+                className={styles.chipAddButton}
+              >
+                <Icon name="plus" size="sm" aria-hidden={true} />
+              </Button>
+            )
           }
           open={open}
           onClose={() => setOpen(false)}

@@ -42,8 +42,8 @@ export function InboxFeedList({ feed, currentUser }: { feed: InboxFeed; currentU
                 <Link
                   href={
                     item.cardId
-                      ? `/kanban/boards/${item.boardId}?card=${item.cardId}`
-                      : `/kanban/boards/${item.boardId}`
+                      ? `/kanban/b/${item.boardId}?card=${item.cardId}`
+                      : `/kanban/b/${item.boardId}`
                   }
                   className={styles.inboxItem}
                 >

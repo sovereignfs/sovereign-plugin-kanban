@@ -274,6 +274,7 @@ export function BoardView({
                       <Button
                         variant="ghost"
                         size="sm"
+                        className={styles.boardOptionsTrigger}
                         aria-label="Board options"
                         onClick={() => setBoardMenuOpen((v) => !v)}
                       >
@@ -414,9 +415,14 @@ function MemberAvatarStack({
   members: BoardData['members'];
   currentUser: CurrentUser;
 }) {
+  // Redundant once you're the only member — the stack exists to show *who
+  // else* is here, and "just me" is already implied by the header's own
+  // account avatar. Share is still right there for adding people.
+  if (members.length < 2) return null;
+
   const shown = members.slice(0, MAX_STACKED_AVATARS);
   const overflow = members.length - shown.length;
-  const label = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
+  const label = `${members.length} members`;
 
   return (
     <div className={styles.memberAvatarStack} aria-label={label} title={label}>
@@ -424,7 +430,8 @@ function MemberAvatarStack({
         <Avatar
           key={member.userId}
           name={displayName(member.userId, currentUser, members)}
-          size="sm"
+          src={member.image ?? undefined}
+          size="md"
           className={`${styles.memberAvatar} ${styles.stackedAvatar}`}
         />
       ))}

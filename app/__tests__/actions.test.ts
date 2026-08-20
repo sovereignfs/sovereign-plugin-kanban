@@ -193,6 +193,142 @@ describe('authorization — non-members and non-creators are denied without side
   });
 });
 
+describe('project & board access — view vs. edit (K.18)', () => {
+  it('a project co-owner can view a board they were never explicitly added to, but cannot mutate it', async () => {
+    const { projectId, boardId } = await setup();
+    // K.19's promote-to-owner UI doesn't exist yet — insert the second
+    // owner row directly, exactly like K.9's tests insert board_members
+    // rows to simulate state no action can produce yet.
+    await t.db.insert(schema.projectMembers).values({
+      projectId,
+      userId: outsider.id,
+      tenantId: outsider.tenantId,
+      role: 'owner',
+      addedBy: owner.id,
+      createdAt: Date.now(),
+    });
+
+    const { getBoardData } = await import('../_lib/queries');
+    const board = await getBoardData(t.db, boardId, {
+      userId: outsider.id,
+      tenantId: outsider.tenantId,
+    });
+    expect(board?.role).toBe('viewer');
+    expect(board?.lists).toHaveLength(1);
+
+    actAs(outsider);
+    expect((await actions.createList({ boardId, name: 'Should be denied' })).ok).toBe(false);
+    expect((await actions.updateBoard({ boardId, name: 'Renamed' })).ok).toBe(false);
+    expect(await t.db.select().from(schema.lists)).toHaveLength(1);
+  });
+
+  it('a project member sees a public board in a public project read-only', async () => {
+    const { projectId, boardId } = await setup();
+    await t.db.insert(schema.projectMembers).values({
+      projectId,
+      userId: outsider.id,
+      tenantId: outsider.tenantId,
+      role: 'member',
+      addedBy: owner.id,
+      createdAt: Date.now(),
+    });
+
+    const { getBoardData } = await import('../_lib/queries');
+    const board = await getBoardData(t.db, boardId, {
+      userId: outsider.id,
+      tenantId: outsider.tenantId,
+    });
+    expect(board?.role).toBe('viewer');
+
+    actAs(outsider);
+    expect((await actions.createList({ boardId, name: 'Should be denied' })).ok).toBe(false);
+  });
+
+  it('a private board hides itself from a plain project member (public project)', async () => {
+    const { projectId, boardId } = await setup();
+    await t.db
+      .update(schema.boards)
+      .set({ visibility: 'private' })
+      .where(eq(schema.boards.id, boardId));
+    await t.db.insert(schema.projectMembers).values({
+      projectId,
+      userId: outsider.id,
+      tenantId: outsider.tenantId,
+      role: 'member',
+      addedBy: owner.id,
+      createdAt: Date.now(),
+    });
+
+    const { getBoardData } = await import('../_lib/queries');
+    expect(
+      await getBoardData(t.db, boardId, { userId: outsider.id, tenantId: outsider.tenantId }),
+    ).toBeNull();
+
+    // The project owner can still see it, board visibility notwithstanding.
+    expect(
+      await getBoardData(t.db, boardId, { userId: owner.id, tenantId: owner.tenantId }),
+    ).not.toBeNull();
+  });
+
+  it('a private project hides an otherwise-public board from a plain project member entirely', async () => {
+    const { projectId, boardId } = await setup();
+    await t.db
+      .update(schema.projects)
+      .set({ visibility: 'private' })
+      .where(eq(schema.projects.id, projectId));
+    await t.db.insert(schema.projectMembers).values({
+      projectId,
+      userId: outsider.id,
+      tenantId: outsider.tenantId,
+      role: 'member',
+      addedBy: owner.id,
+      createdAt: Date.now(),
+    });
+
+    const { getBoardData } = await import('../_lib/queries');
+    // The board itself is still 'public' — the project's 'private' flag
+    // overrides it, not the other way around.
+    expect(
+      (await t.db.select().from(schema.boards).where(eq(schema.boards.id, boardId)))[0]
+        ?.visibility,
+    ).toBe('public');
+    expect(
+      await getBoardData(t.db, boardId, { userId: outsider.id, tenantId: outsider.tenantId }),
+    ).toBeNull();
+  });
+
+  it('getHomeData lists a project owner\'s boards read-only alongside their explicit memberships', async () => {
+    const { projectId, boardId } = await setup();
+    await t.db.insert(schema.projectMembers).values({
+      projectId,
+      userId: outsider.id,
+      tenantId: outsider.tenantId,
+      role: 'owner',
+      addedBy: owner.id,
+      createdAt: Date.now(),
+    });
+
+    const { getHomeData } = await import('../_lib/queries');
+    const home = await getHomeData(t.db, { userId: outsider.id, tenantId: outsider.tenantId });
+    expect(home).toHaveLength(1);
+    const project = must(home[0], 'home project');
+    expect(project.boards).toHaveLength(1);
+    expect(must(project.boards[0], 'home board').role).toBe('viewer');
+    expect(must(project.boards[0], 'home board').id).toBe(boardId);
+  });
+
+  it('an unrelated user gets no access at all — the Phase 1 baseline still holds', async () => {
+    const { boardId } = await setup();
+    const { getBoardData, getHomeData } = await import('../_lib/queries');
+    expect(
+      await getBoardData(t.db, boardId, { userId: outsider.id, tenantId: outsider.tenantId }),
+    ).toBeNull();
+    expect(await getHomeData(t.db, { userId: outsider.id, tenantId: outsider.tenantId })).toEqual(
+      [],
+    );
+  });
+});
+
 describe('mutations record activity and maintain ordering', () => {
   it('walks the full happy path with an audit trail', async () => {
     const { boardId, listId } = await setup();
@@ -722,9 +858,10 @@ describe('board members & share (K.9)', () => {
   const newcomer = { id: 'user-newcomer', tenantId: 'default' };
 
   it('denies member management to a non-owner without side effects', async () => {
-    const { boardId } = await setup();
+    const { projectId, boardId } = await setup();
     actAs(owner);
     registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
     expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
     const member = must(
       (await t.db.select().from(schema.boardMembers)).find((m) => m.userId !== owner.id),
@@ -736,7 +873,7 @@ describe('board members & share (K.9)', () => {
     const denials = await Promise.all([
       actions.addBoardMember({ boardId, userId: outsider.id }),
       actions.removeBoardMember({ boardId, userId: owner.id }),
-      actions.searchBoardMemberCandidates({ boardId, query: 'out' }),
+      actions.getBoardMemberCandidates({ boardId }),
     ]);
     expect(denials[0].ok).toBe(false);
     expect(denials[1].ok).toBe(false);
@@ -756,9 +893,11 @@ describe('board members & share (K.9)', () => {
   });
 
   it('adds a member, records activity, and notifies them with a board deep link', async () => {
-    const { boardId } = await setup();
+    const { projectId, boardId } = await setup();
     actAs(owner);
     registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
+    harness.sentNotifications = []; // clear the "added to project" notification — this test only asserts the board one
 
     expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
     const rows = await t.db.select().from(schema.boardMembers);
@@ -771,7 +910,7 @@ describe('board members & share (K.9)', () => {
     expect(harness.sentNotifications).toHaveLength(1);
     const notification = must(harness.sentNotifications[0], 'notification');
     expect(notification.recipientUserId).toBe(newcomer.id);
-    expect(notification.url).toBe(`/kanban/boards/${boardId}`);
+    expect(notification.url).toBe(`/kanban/b/${boardId}`);
   });
 
   it('rejects adding someone already a member, and someone not in the directory', async () => {
@@ -790,10 +929,24 @@ describe('board members & share (K.9)', () => {
     expect(harness.sentNotifications).toHaveLength(0);
   });
 
+  it('rejects adding a real directory user who isn’t a project member (K.20)', async () => {
+    const { boardId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: outsider.id, email: 'outsider@example.com', name: 'Outsider' });
+
+    expect(await actions.addBoardMember({ boardId, userId: outsider.id })).toEqual({
+      ok: false,
+      error: 'Add them to the project first.',
+    });
+    expect(await t.db.select().from(schema.boardMembers)).toHaveLength(1);
+    expect(harness.sentNotifications).toHaveLength(0);
+  });
+
   it('removes a member, records activity, and detaches them from the board’s cards', async () => {
-    const { boardId, listId } = await setup();
+    const { projectId, boardId, listId } = await setup();
     actAs(owner);
     registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
     expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
 
     expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
@@ -822,24 +975,29 @@ describe('board members & share (K.9)', () => {
     });
   });
 
-  it('search excludes existing members from candidates', async () => {
-    const { boardId } = await setup();
+  it('candidates are sourced from project members only, excluding those already on the board', async () => {
+    const { projectId, boardId } = await setup();
     actAs(owner);
     registerDirectoryUser({ id: owner.id, email: 'owner@example.com', name: 'Board Owner' });
     registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    registerDirectoryUser({ id: outsider.id, email: 'outsider@example.com', name: 'Outsider' });
+    // A project member not yet on the board — the only one who should appear.
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
 
-    const results = await actions.searchBoardMemberCandidates({ boardId, query: 'New' });
+    const results = await actions.getBoardMemberCandidates({ boardId });
     const ids = results.map((u) => u.id);
-    expect(ids).toContain(newcomer.id);
-    expect(ids).not.toContain(owner.id); // already a member
+    expect(ids).toEqual([newcomer.id]);
+    expect(ids).not.toContain(owner.id); // already a board member (also the project owner)
+    expect(ids).not.toContain(outsider.id); // in the directory, but not a project member at all
   });
 
   it('notifies an assignee, but not on self-assignment', async () => {
-    const { boardId, listId } = await setup();
+    const { projectId, boardId, listId } = await setup();
     actAs(owner);
     registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
     expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
-    harness.sentNotifications = []; // clear the "added to board" notification from setup
+    harness.sentNotifications = []; // clear the "added to project"/"added to board" notifications from setup
 
     expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
     const card = must((await t.db.select().from(schema.cards))[0], 'card');
@@ -851,14 +1009,15 @@ describe('board members & share (K.9)', () => {
     expect(harness.sentNotifications).toHaveLength(1);
     const notification = must(harness.sentNotifications[0], 'notification');
     expect(notification.recipientUserId).toBe(newcomer.id);
-    expect(notification.url).toBe(`/kanban/boards/${boardId}?card=${card.id}`);
+    expect(notification.url).toBe(`/kanban/b/${boardId}?card=${card.id}`);
   });
 
   it('getBoardData resolves member names and emails via the directory', async () => {
-    const { boardId } = await setup();
+    const { projectId, boardId } = await setup();
     actAs(owner);
     registerDirectoryUser({ id: owner.id, email: 'owner@example.com', name: 'Board Owner' });
     registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
     expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
 
     const { getBoardData } = await import('../_lib/queries');
@@ -872,13 +1031,172 @@ describe('board members & share (K.9)', () => {
   });
 });
 
+describe('project members & share (K.19)', () => {
+  const newcomer = { id: 'user-newcomer', tenantId: 'default' };
+
+  it('denies member management to a non-owner without side effects', async () => {
+    const { projectId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
+
+    // A plain member (just added) can't manage membership either — only an owner can.
+    actAs(newcomer);
+    const denials = await Promise.all([
+      actions.addProjectMember({ projectId, userId: outsider.id }),
+      actions.removeProjectMember({ projectId, userId: owner.id }),
+      actions.updateProjectMemberRole({ projectId, userId: newcomer.id, role: 'owner' }),
+      actions.searchProjectMemberCandidates({ projectId, query: 'out' }),
+    ]);
+    expect(denials[0].ok).toBe(false);
+    expect(denials[1].ok).toBe(false);
+    expect(denials[2].ok).toBe(false);
+    expect(denials[3]).toEqual([]);
+
+    actAs(outsider);
+    expect(await actions.addProjectMember({ projectId, userId: outsider.id })).toEqual({
+      ok: false,
+      error: 'Project not found.',
+    });
+
+    expect(await t.db.select().from(schema.projectMembers)).toHaveLength(2); // owner + newcomer only
+  });
+
+  it('adds a member and notifies them with a project deep link', async () => {
+    const { projectId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
+    const rows = await t.db.select().from(schema.projectMembers);
+    expect(rows).toHaveLength(2);
+    expect(must(rows.find((m) => m.userId === newcomer.id), 'newcomer row').role).toBe('member');
+
+    expect(harness.sentNotifications).toHaveLength(1);
+    const notification = must(harness.sentNotifications[0], 'notification');
+    expect(notification.recipientUserId).toBe(newcomer.id);
+    expect(notification.url).toBe(`/kanban#project-${projectId}`);
+  });
+
+  it('rejects adding someone already a member, and someone not in the directory', async () => {
+    const { projectId } = await setup();
+    actAs(owner);
+
+    expect(await actions.addProjectMember({ projectId, userId: owner.id })).toEqual({
+      ok: false,
+      error: 'This person is already a member.',
+    });
+    expect(await actions.addProjectMember({ projectId, userId: 'user-ghost' })).toEqual({
+      ok: false,
+      error: 'That person could not be found.',
+    });
+    expect(await t.db.select().from(schema.projectMembers)).toHaveLength(1);
+    expect(harness.sentNotifications).toHaveLength(0);
+  });
+
+  it('removes a member without touching their independent board access', async () => {
+    const { projectId, boardId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
+    // Separately, also add them to the board — a board_members row is
+    // independent access, unaffected by project-level removal (K.19's
+    // deliberate no-cascade design, documented on removeProjectMember).
+    await t.db.insert(schema.boardMembers).values({
+      boardId,
+      userId: newcomer.id,
+      tenantId: newcomer.tenantId,
+      role: 'member',
+      addedBy: owner.id,
+      createdAt: Date.now(),
+    });
+
+    expect((await actions.removeProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
+    expect(await t.db.select().from(schema.projectMembers)).toHaveLength(1);
+    // Still a board member — the removal didn't cascade.
+    expect(
+      (await t.db.select().from(schema.boardMembers)).some((m) => m.userId === newcomer.id),
+    ).toBe(true);
+  });
+
+  it('rejects removing the last owner, and removing a non-member', async () => {
+    const { projectId } = await setup();
+    actAs(owner);
+    expect(await actions.removeProjectMember({ projectId, userId: owner.id })).toEqual({
+      ok: false,
+      error: 'A project needs at least one owner — promote someone else first.',
+    });
+    expect(await actions.removeProjectMember({ projectId, userId: outsider.id })).toEqual({
+      ok: false,
+      error: 'That person is not a member of this project.',
+    });
+  });
+
+  it('promotes a member to co-owner, and a co-owner can then remove the original owner', async () => {
+    const { projectId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
+    expect(
+      (await actions.updateProjectMemberRole({ projectId, userId: newcomer.id, role: 'owner' }))
+        .ok,
+    ).toBe(true);
+
+    // Two owners now — removing the original owner is allowed (one remains).
+    expect((await actions.removeProjectMember({ projectId, userId: owner.id })).ok).toBe(true);
+    const remaining = await t.db.select().from(schema.projectMembers);
+    expect(remaining).toHaveLength(1);
+    expect(must(remaining[0], 'remaining member').userId).toBe(newcomer.id);
+    expect(must(remaining[0], 'remaining member').role).toBe('owner');
+  });
+
+  it('rejects demoting the last owner', async () => {
+    const { projectId } = await setup();
+    actAs(owner);
+    expect(
+      await actions.updateProjectMemberRole({ projectId, userId: owner.id, role: 'member' }),
+    ).toEqual({ ok: false, error: 'A project needs at least one owner — promote someone else first.' });
+  });
+
+  it('search excludes existing members from candidates', async () => {
+    const { projectId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: owner.id, email: 'owner@example.com', name: 'Project Owner' });
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+
+    const results = await actions.searchProjectMemberCandidates({ projectId, query: 'New' });
+    const ids = results.map((u) => u.id);
+    expect(ids).toContain(newcomer.id);
+    expect(ids).not.toContain(owner.id); // already a member
+  });
+
+  it('updateProject persists visibility, which getBoardData\'s viewer path immediately reflects', async () => {
+    const { projectId, boardId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
+    expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
+
+    const { getBoardData } = await import('../_lib/queries');
+    expect(
+      (await getBoardData(t.db, boardId, { userId: newcomer.id, tenantId: newcomer.tenantId }))
+        ?.role,
+    ).toBe('viewer');
+
+    expect((await actions.updateProject({ projectId, visibility: 'private' })).ok).toBe(true);
+    expect(
+      await getBoardData(t.db, boardId, { userId: newcomer.id, tenantId: newcomer.tenantId }),
+    ).toBeNull();
+  });
+});
+
 describe('comment notifications (K.11)', () => {
   const commenter = { id: 'user-commenter', tenantId: 'default' };
 
   async function setupCardWithAssignee(): Promise<{ boardId: string; cardId: string }> {
-    const { boardId, listId } = await setup();
+    const { projectId, boardId, listId } = await setup();
     actAs(owner);
     registerDirectoryUser({ id: commenter.id, email: 'commenter@example.com', name: 'Commenter' });
+    expect((await actions.addProjectMember({ projectId, userId: commenter.id })).ok).toBe(true);
     expect((await actions.addBoardMember({ boardId, userId: commenter.id })).ok).toBe(true);
     expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
     const card = must((await t.db.select().from(schema.cards))[0], 'card');
@@ -992,7 +1310,7 @@ describe('inbox (K.11)', () => {
   });
 
   it('hasUnseenInboxActivity ignores the actor’s own activity but reacts to others’, and clears after markInboxSeen', async () => {
-    const { boardId } = await setup();
+    const { projectId, boardId } = await setup();
     const { hasUnseenInboxActivity } = await import('../_lib/queries');
     const ownerActor = { userId: owner.id, tenantId: owner.tenantId };
 
@@ -1000,6 +1318,7 @@ describe('inbox (K.11)', () => {
     expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false); // only own board.created so far
 
     registerDirectoryUser({ id: 'user-other-member', email: 'other@example.com', name: 'Other' });
+    expect((await actions.addProjectMember({ projectId, userId: 'user-other-member' })).ok).toBe(true);
     expect((await actions.addBoardMember({ boardId, userId: 'user-other-member' })).ok).toBe(true);
     expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false); // still only owner's own actions
 

@@ -63,23 +63,51 @@ export async function requireBoardOwner(
   return role === 'owner' ? role : null;
 }
 
-/** The project row, or null when it doesn't exist or the actor didn't create it. */
-export async function requireProjectCreator(
+export type ProjectRole = 'owner' | 'member';
+
+/**
+ * The actor's role on a project, or null when not a member (or no such
+ * project). Mirrors `getBoardRole` exactly. Phase 2 (K.18) — a project's
+ * `created_by` stays a historical "who created this" field; ownership
+ * authority now lives here, in `kanban_project_members`. See CONCEPT.md's
+ * "Phase 2" section.
+ */
+export async function getProjectRole(
   db: KanbanDb,
   projectId: string,
   actor: Actor,
-): Promise<{ id: string } | null> {
+): Promise<ProjectRole | null> {
   const rows = await db
-    .select({ id: schema.projects.id })
-    .from(schema.projects)
+    .select({ role: schema.projectMembers.role })
+    .from(schema.projectMembers)
     .where(
       and(
-        eq(schema.projects.id, projectId),
-        eq(schema.projects.createdBy, actor.userId),
-        eq(schema.projects.tenantId, actor.tenantId),
+        eq(schema.projectMembers.projectId, projectId),
+        eq(schema.projectMembers.userId, actor.userId),
+        eq(schema.projectMembers.tenantId, actor.tenantId),
       ),
     );
-  return rows[0] ?? null;
+  const role = rows[0]?.role;
+  return role === 'owner' || role === 'member' ? role : null;
+}
+
+/** Null when the actor isn't a member of this project at all. */
+export async function requireProjectMember(
+  db: KanbanDb,
+  projectId: string,
+  actor: Actor,
+): Promise<ProjectRole | null> {
+  return getProjectRole(db, projectId, actor);
+}
+
+/** Null unless the actor owns this project (one of possibly several owners). */
+export async function requireProjectOwner(
+  db: KanbanDb,
+  projectId: string,
+  actor: Actor,
+): Promise<ProjectRole | null> {
+  const role = await getProjectRole(db, projectId, actor);
+  return role === 'owner' ? role : null;
 }
 
 /**

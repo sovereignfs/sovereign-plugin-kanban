@@ -43,19 +43,37 @@ export function CardAssignees({
       <Typography variant="label">Assignees</Typography>
       <div className={styles.assigneeRow}>
         {card.assignees.map((a) => (
-          <Avatar key={a.userId} name={displayName(a.userId, currentUser, members)} size="sm" />
+          <Avatar
+            key={a.userId}
+            name={displayName(a.userId, currentUser, members)}
+            src={members.find((m) => m.userId === a.userId)?.image ?? undefined}
+            size="sm"
+          />
         ))}
         <Popover
           trigger={
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label="Edit assignees"
-              onClick={() => setOpen((v) => !v)}
-              className={styles.chipAddButton}
-            >
-              <Icon name="plus" size="sm" aria-hidden={true} />
-            </Button>
+            card.assignees.length === 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Add assignees"
+                onClick={() => setOpen((v) => !v)}
+                className={styles.chipAddTextButton}
+              >
+                <Icon name="plus" size="sm" aria-hidden={true} />
+                Add assignee
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Edit assignees"
+                onClick={() => setOpen((v) => !v)}
+                className={styles.chipAddButton}
+              >
+                <Icon name="plus" size="sm" aria-hidden={true} />
+              </Button>
+            )
           }
           open={open}
           onClose={() => setOpen(false)}

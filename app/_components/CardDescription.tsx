@@ -63,9 +63,17 @@ export function CardDescription({ card }: { card: CardDetail }) {
           </div>
         </div>
       ) : (
-        <button type="button" className={styles.descriptionView} onClick={startEdit}>
+        <button
+          type="button"
+          className={
+            card.description
+              ? styles.descriptionView
+              : `${styles.descriptionView} ${styles.descriptionViewEmpty}`
+          }
+          onClick={startEdit}
+        >
           {card.description ? (
-            <Markdown content={card.description} />
+            <Markdown content={card.description} preserveLineBreaks />
           ) : (
             <Typography variant="body" className={styles.descriptionPlaceholder}>
               Add a description…

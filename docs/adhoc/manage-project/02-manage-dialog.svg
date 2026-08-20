@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="860" viewBox="0 0 640 860" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <rect width="640" height="860" fill="#e4e4e7" opacity="0.6"/>
+  <rect x="120" y="30" width="400" height="800" rx="12" fill="#ffffff" stroke="#d4d4d8"/>
+
+  <!-- Header -->
+  <text x="148" y="70" font-size="18" font-weight="700" fill="#18181b">Manage project</text>
+  <text x="496" y="68" font-size="16" fill="#71717a">✕</text>
+
+  <!-- Name -->
+  <text x="148" y="104" font-size="13" font-weight="600" fill="#18181b">Name</text>
+  <rect x="148" y="112" width="344" height="38" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="162" y="136" font-size="14" fill="#18181b">Product Launch</text>
+
+  <!-- Description -->
+  <text x="148" y="178" font-size="13" font-weight="600" fill="#18181b">Description <tspan fill="#a1a1aa" font-weight="400">(optional)</tspan></text>
+  <rect x="148" y="186" width="344" height="56" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="162" y="208" font-size="14" fill="#18181b">Everything for the v2 launch.</text>
+
+  <!-- Visibility -->
+  <text x="148" y="270" font-size="13" font-weight="600" fill="#18181b">Visibility</text>
+  <rect x="148" y="278" width="172" height="34" rx="8" fill="#18181b"/>
+  <text x="172" y="300" font-size="13" fill="#ffffff">Public</text>
+  <rect x="320" y="278" width="172" height="34" rx="8" fill="#f4f4f5" stroke="#d4d4d8"/>
+  <text x="380" y="300" font-size="13" fill="#52525b">Private</text>
+  <text x="148" y="330" font-size="12" fill="#a1a1aa">Project members can view every public board without being added to it.</text>
+
+  <line x1="148" y1="352" x2="492" y2="352" stroke="#e4e4e7"/>
+
+  <!-- Members -->
+  <text x="148" y="382" font-size="13" font-weight="600" fill="#18181b">Members</text>
+  <text x="226" y="382" font-size="12" fill="#a1a1aa">3</text>
+
+  <!-- member row 1: owner (self) -->
+  <circle cx="160" cy="410" r="14" fill="#e4e4e7"/>
+  <text x="152" y="414" font-size="10" fill="#52525b">DO</text>
+  <text x="186" y="408" font-size="13" fill="#18181b">Dev Owner</text>
+  <text x="186" y="422" font-size="11" fill="#a1a1aa">owner@sovereign.local</text>
+  <text x="478" y="414" font-size="12" fill="#71717a" text-anchor="end">Owner</text>
+
+  <!-- member row 2: co-owner, manageable -->
+  <circle cx="160" cy="450" r="14" fill="#e4e4e7"/>
+  <text x="152" y="454" font-size="10" fill="#52525b">DA</text>
+  <text x="186" y="448" font-size="13" fill="#18181b">Dev Admin</text>
+  <text x="186" y="462" font-size="11" fill="#a1a1aa">admin@sovereign.local</text>
+  <text x="392" y="454" font-size="12" fill="#52525b" text-anchor="end">Make member</text>
+  <text x="478" y="454" font-size="12" fill="#52525b" text-anchor="end">Remove</text>
+
+  <!-- member row 3: member, manageable -->
+  <circle cx="160" cy="490" r="14" fill="#e4e4e7"/>
+  <text x="152" y="494" font-size="10" fill="#52525b">DU</text>
+  <text x="186" y="488" font-size="13" fill="#18181b">Dev User</text>
+  <text x="186" y="502" font-size="11" fill="#a1a1aa">user@sovereign.local</text>
+  <text x="400" y="494" font-size="12" fill="#52525b" text-anchor="end">Make owner</text>
+  <text x="478" y="494" font-size="12" fill="#52525b" text-anchor="end">Remove</text>
+
+  <line x1="148" y1="524" x2="492" y2="524" stroke="#f4f4f5"/>
+
+  <!-- Add a person -->
+  <text x="148" y="552" font-size="11" font-weight="600" fill="#71717a" letter-spacing="0.5">ADD A PERSON</text>
+  <rect x="148" y="560" width="344" height="38" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="162" y="584" font-size="14" fill="#a1a1aa">Search by name or email</text>
+
+  <line x1="148" y1="622" x2="492" y2="622" stroke="#e4e4e7"/>
+
+  <!-- Danger zone -->
+  <text x="148" y="652" font-size="13" font-weight="600" fill="#b91c1c">Danger zone</text>
+  <rect x="148" y="662" width="344" height="64" rx="8" fill="#fef2f2" stroke="#fecaca"/>
+  <text x="162" y="686" font-size="13" fill="#18181b">Delete this project</text>
+  <text x="162" y="702" font-size="11" fill="#71717a">Deletes 2 boards and everything on them. Can’t be undone.</text>
+  <rect x="392" y="674" width="88" height="34" rx="8" fill="#ffffff" stroke="#fca5a5"/>
+  <text x="410" y="696" font-size="13" fill="#b91c1c">Delete</text>
+
+  <!-- Footer actions -->
+  <rect x="316" y="762" width="80" height="34" rx="8" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="336" y="784" font-size="13" fill="#18181b">Cancel</text>
+  <rect x="404" y="762" width="112" height="34" rx="8" fill="#18181b"/>
+  <text x="418" y="784" font-size="13" fill="#ffffff">Save changes</text>
+
+  <!-- Annotations -->
+  <text x="148" y="826" font-size="11" fill="#a1a1aa">Delete is a second confirm step (ConfirmDialog), not immediate on click — matches today's delete flow.</text>
+  <text x="148" y="842" font-size="11" fill="#a1a1aa">Members/Add-a-person/Danger-zone sections render only for an owner; a plain member sees name/description/visibility read-only + the member list, no controls.</text>
+</svg>

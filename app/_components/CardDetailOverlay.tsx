@@ -10,7 +10,6 @@ import {
   Input,
   Menu,
   Tabs,
-  Typography,
   useCommitOnEnterOrBlur,
   useIsMobile,
   useOverlaySecondRow,
@@ -65,8 +64,6 @@ export function CardDetailOverlay({
 
   if (!cardId || !cardDetail) return null;
 
-  const list = board.lists.find((l) => l.id === cardDetail.listId);
-
   function close(): void {
     router.push(closeHref ?? pathname);
   }
@@ -75,21 +72,25 @@ export function CardDetailOverlay({
     <Dialog
       open
       onClose={close}
-      size={isMobile ? 'full' : 'md'}
+      size={isMobile ? 'full' : 'xl'}
       title={cardDetail.title}
       aria-label={cardDetail.title}
     >
       <div className={styles.cardOverlayBody}>
-        <CardHeader
-          card={cardDetail}
-          board={board}
-          listName={list?.name}
-          isMobile={isMobile}
-          onClose={close}
-        />
-        <CardLabels card={cardDetail} boardId={board.id} boardLabels={board.labels} />
-        <CardDueDate card={cardDetail} />
-        <CardAssignees card={cardDetail} members={board.members} currentUser={currentUser} />
+        <CardHeader card={cardDetail} board={board} isMobile={isMobile} onClose={close} />
+        {/* Labels/Due date/Assignees grouped into one row (developer-requested
+            retouch) — three short metadata fields each got their own
+            full-width stacked section before, all at the same visual
+            weight as the much bigger Description/Checklist blocks below
+            them, reading as a long uniform list with no sense of grouping.
+            A shared border-bottom also marks where "card metadata" ends
+            and "card content" begins — there wasn't a visual break there
+            before either. */}
+        <div className={styles.cardMetaRow}>
+          <CardLabels card={cardDetail} boardId={board.id} boardLabels={board.labels} />
+          <CardDueDate card={cardDetail} />
+          <CardAssignees card={cardDetail} members={board.members} currentUser={currentUser} />
+        </div>
         <CardDescription card={cardDetail} />
         <CardChecklist card={cardDetail} />
         <CardCommentsActivity
@@ -106,13 +107,11 @@ export function CardDetailOverlay({
 function CardHeader({
   card,
   board,
-  listName,
   isMobile,
   onClose,
 }: {
   card: CardDetail;
   board: BoardData;
-  listName: string | undefined;
   isMobile: boolean;
   onClose: () => void;
 }) {
@@ -142,7 +141,19 @@ function CardHeader({
   const titleHandlers = useCommitOnEnterOrBlur(commitTitle);
 
   return (
-    <div className={styles.cardHeader}>
+    // Sticky/bleed treatment is desktop-only (`.cardHeader` vs. the plain
+    // `.cardHeaderMobile`) — mobile already has its own permanently-pinned
+    // title bar via `Dialog`'s own mobile `OverlayHeader` (`title` prop,
+    // fed above), so sticking *this* in-body header too would duplicate
+    // it, and unlike on desktop that duplicate would now stay on screen
+    // continuously while scrolling instead of scrolling away once (caught
+    // live testing at a real 375px viewport before shipping this, not by
+    // report). Mobile also never had `Dialog`'s floating `.close` button
+    // to begin with (mobile hides it in favor of `OverlayHeader`'s own
+    // close affordance — `Dialog.module.css`'s mobile media query), so
+    // none of this header's close-button-clearance styling applies there
+    // either.
+    <div className={isMobile ? styles.cardHeaderMobile : styles.cardHeader}>
       <Input
         className={styles.cardTitleInput}
         value={title}
@@ -155,39 +166,46 @@ function CardHeader({
         }}
         onBlur={titleHandlers.onBlur}
       />
-      <Menu
-        trigger={
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Card options"
-            onClick={() => setMenuOpen((v) => !v)}
-          >
-            <Icon name="ellipsis-vertical" size="sm" aria-hidden={true} />
-          </Button>
-        }
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        align="right"
-        aria-label="Card options"
-        items={[
-          // K.15 — "Move to…" is the mobile-only, non-drag path for a
-          // cross-list move (CONCEPT.md: "Action menu only... never drag" on
-          // mobile, vs. web's whole-card drag, K.7). Kept off the desktop
-          // menu deliberately — web already has drag for this, and adding a
-          // redundant menu entry there is outside K.15's own scope.
-          ...(isMobile
-            ? [{ label: 'Move to…', icon: 'external-link' as const, onSelect: () => setMoveOpen(true) }]
-            : []),
-          { label: 'Delete card', icon: 'trash-2' as const, destructive: true, onSelect: () => setDeleteOpen(true) },
-        ]}
-      />
-      {listName && (
-        <Typography variant="caption" className={styles.cardBreadcrumb}>
-          in {listName}
-        </Typography>
+      {isMobile ? (
+        // K.15 — "Move to…" is the mobile-only, non-drag path for a
+        // cross-list move (CONCEPT.md: "Action menu only... never drag" on
+        // mobile, vs. web's whole-card drag, K.7) — the menu earns its
+        // keep here since it holds two real items. Desktop's own menu
+        // never had a second item to justify one at all (web already has
+        // drag for the list move, so "Move to…" is deliberately absent
+        // there) — replaced with a direct delete button below, developer-
+        // requested: one fewer click, and one fewer disconnected-looking
+        // trigger competing with the close button in the same corner.
+        <Menu
+          trigger={
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Card options"
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              <Icon name="ellipsis-vertical" size="sm" aria-hidden={true} />
+            </Button>
+          }
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          align="right"
+          aria-label="Card options"
+          items={[
+            { label: 'Move to…', icon: 'external-link', onSelect: () => setMoveOpen(true) },
+            { label: 'Delete card', icon: 'trash-2', destructive: true, onSelect: () => setDeleteOpen(true) },
+          ]}
+        />
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Delete card"
+          onClick={() => setDeleteOpen(true)}
+        >
+          <Icon name="trash-2" size="sm" aria-hidden={true} />
+        </Button>
       )}
-
       {deleteOpen && (
         <ConfirmDialog
           open
@@ -218,23 +236,24 @@ function CardHeader({
 }
 
 /**
- * K.14 — mobile readability: Comments and Activity switch via tabs instead
- * of two always-stacked sections. The tab strip itself is handed up to the
- * Dialog's mobile `OverlayHeader` second row (`useOverlaySecondRow`, the
- * same mechanism Account/Console use for their own tab strips) rather than
- * rendered inline here, so it stays pinned above the scrolling content
- * instead of scrolling away with it.
+ * K.14 (mobile) + developer-requested desktop follow-up: Comments and
+ * Activity switch via tabs on both surfaces now, not just mobile — the two
+ * sections stacked together on desktop read as one long, low-signal scroll
+ * (nothing marks where Comments ends and Activity begins beyond a section
+ * label), and most of a card's activity log is redundant with what its
+ * comments already say. On mobile the tab strip is still handed up to the
+ * Dialog's own `OverlayHeader` second row (`useOverlaySecondRow`, the same
+ * mechanism Account/Console use for their own tab strips) so it stays
+ * pinned above the scrolling content instead of scrolling away with it —
+ * desktop has no such header row to hand it to, so it renders inline here
+ * instead, as an ordinary (non-sticky) first element.
  *
- * Both sections stay mounted at all times on mobile (toggled via a CSS
- * class, not conditional rendering) — unmounting the inactive one on every
- * switch would discard an in-progress, not-yet-submitted comment draft the
- * moment someone taps over to Activity and back, undercutting the "editing
- * efficiency" mobile card detail is supposed to prioritize (CONCEPT.md).
- *
- * Desktop is completely unchanged: both sections render stacked, exactly as
- * K.6/K.8 originally built them, matching CONCEPT.md's web row (`modal
- * dialog with all card fields plus dedicated Comments & Replies and
- * Activity sections`).
+ * Both sections stay mounted at all times on *both* surfaces (toggled via a
+ * CSS class, not conditional rendering) — unmounting the inactive one on
+ * every switch would discard an in-progress, not-yet-submitted comment
+ * draft the moment someone clicks over to Activity and back, undercutting
+ * the "editing efficiency" this modal is supposed to prioritize
+ * (CONCEPT.md) on either surface, not just mobile.
  */
 function CardCommentsActivity({
   card,
@@ -264,11 +283,26 @@ function CardCommentsActivity({
 
   return (
     <>
-      <div className={isMobile && activeTab !== 'comments' ? styles.tabPanelHidden : undefined}>
-        <CardComments card={card} members={board.members} currentUser={currentUser} />
-      </div>
-      <div className={isMobile && activeTab !== 'activity' ? styles.tabPanelHidden : undefined}>
-        <CardActivity card={card} board={board} currentUser={currentUser} />
+      {!isMobile && tabStrip}
+      {/* `.cardTabPanels`' own `min-height` (developer-requested) keeps the
+          dialog from visibly resizing every time the active tab switches —
+          Comments and Activity rarely have the same amount of content
+          (e.g. "No comments yet" vs. four real activity log lines), and
+          since the dialog's own height is content-driven up to its size
+          cap (`Dialog.module.css`'s own file comment), swapping between a
+          short panel and a longer one shifted the whole panel's height on
+          every click. Doesn't make the dialog truly fixed-height — content
+          taller than the reserved minimum still grows it, matching the
+          `sm`/`md`/`xl` "grows to fit, capped rather than fixed" behavior
+          everywhere else in this dialog — just stops the *common* short-
+          content case from visibly jumping. */}
+      <div className={styles.cardTabPanels}>
+        <div className={activeTab !== 'comments' ? styles.tabPanelHidden : undefined}>
+          <CardComments card={card} members={board.members} currentUser={currentUser} />
+        </div>
+        <div className={activeTab !== 'activity' ? styles.tabPanelHidden : undefined}>
+          <CardActivity card={card} board={board} currentUser={currentUser} />
+        </div>
       </div>
     </>
   );

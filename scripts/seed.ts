@@ -195,6 +195,16 @@ async function main(): Promise<void> {
       createdAt: input.createdAt,
       updatedAt: input.createdAt,
     });
+    // Phase 2 (K.17/K.18): the creator becomes the project's first owner —
+    // mirrors what actions.ts's createProject now does for a real user.
+    await db.insert(schema.projectMembers).values({
+      projectId: input.id,
+      userId: input.createdBy,
+      tenantId: TENANT_ID,
+      role: 'owner',
+      addedBy: input.createdBy,
+      createdAt: input.createdAt,
+    });
   }
 
   async function addBoard(input: {
@@ -225,6 +235,22 @@ async function main(): Promise<void> {
         addedBy: input.createdBy,
         createdAt: input.createdAt,
       });
+      // Phase 2 (K.18): a board member must also be a project member — the
+      // real UI (K.20) will only ever draw its board-add picker from the
+      // project's own member list. `onConflictDoNothing` covers the project
+      // owner (already seeded by `addProject`) and anyone already added via
+      // an earlier board in the same project.
+      await db
+        .insert(schema.projectMembers)
+        .values({
+          projectId: input.projectId,
+          userId: m.userId,
+          tenantId: TENANT_ID,
+          role: 'member',
+          addedBy: input.createdBy,
+          createdAt: input.createdAt,
+        })
+        .onConflictDoNothing();
       if (m.userId !== input.createdBy) {
         await activity({
           boardId: input.id,

@@ -124,4 +124,56 @@ members · Share/settings entry points · Inbox notifications · Responsive web
 experience · Mobile board and card experience · Loading states throughout.
 
 Out of scope for Phase 1: attachments, card cover images, power-up-style
-extensions, board templates, cross-board search, offline editing.
+extensions, board templates, cross-board search, offline editing, project-level
+membership and visibility (Phase 1 sharing is per-board only — see Phase 2
+below).
+
+## Phase 2: Project & board membership + visibility (decided)
+
+Phase 1 has no concept of a project member — sharing happens per board only
+(`kanban_board_members`), and the board-add picker searches the whole
+platform directory. Phase 2 introduces a membership tier above boards and a
+visibility flag at both levels. These decisions are settled — do not reopen
+them during implementation:
+
+- **Projects gain their own member list**, separate from board membership:
+  `owner` (plural — a project supports co-owners, mirroring how boards
+  already support more than one `owner`) and `member`. The project creator
+  becomes its first owner.
+- **Board membership is drawn from project membership, not the platform
+  directory.** To add someone to a board, they must already be a project
+  member — sharing a board is a two-step flow (invite to project, then add
+  to board), never a direct directory search from inside a board. The
+  directory-search picker moves from the board share dialog to a new
+  project share dialog — the only place a genuinely new person enters the
+  picture.
+- **Only explicit board membership grants edit rights.** Project ownership
+  never grants edit access to a board's content — a project owner who isn't
+  also a board member can view but not touch it. This mirrors Trello/Asana's
+  workspace-vs-project split, not a shortcut.
+- **Two independent visibility flags**, both defaulting to `public`:
+  - **Project visibility.** `public` (default): a board's own visibility
+    flag governs who among project members can view it. `private`: only
+    that board's own members and the project's owners can view any board in
+    the project — a board's individual `public` flag is overridden, not
+    consulted.
+  - **Board visibility** (only consulted when its project is `public`).
+    `public` (default): any project member can view the board (read-only,
+    unless they're also an explicit board member). `private`: only that
+    board's members and the project's owners can view it.
+  - Project owners can always view every board in their project regardless
+    of either flag — the one access path that isn't gated by visibility at
+    all, only by ownership.
+- **A genuine read-only viewing mode is new in Phase 2.** Phase 1 had no
+  such thing — you were either a board member (could edit) or the board
+  didn't render for you at all. A project owner or a public-project member
+  viewing a board they don't belong to sees the full board — lists, cards,
+  comments, activity — with every mutation affordance (add/edit/delete,
+  drag-and-drop, checklist, comments, membership management) hidden or
+  disabled.
+- **Web only for Phase 2.** Read-only viewing ships on web first; mobile
+  parity is a documented follow-up, not part of this phase — same
+  "build order: web first, then mobile" principle as Phase 1 itself.
+
+See `SPEC.md`'s Tasks section (`K.17`–`K.22`) for the technical breakdown and
+`ROADMAP.md` for build order.

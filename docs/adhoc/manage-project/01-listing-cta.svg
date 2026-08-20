@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <rect width="1200" height="360" fill="#fafafa"/>
+
+  <!-- Secondary sidebar (context only) -->
+  <rect x="0" y="0" width="220" height="360" fill="#f4f4f5"/>
+  <line x1="220" y1="0" x2="220" y2="360" stroke="#e4e4e7"/>
+  <rect x="12" y="16" width="196" height="36" rx="8" fill="#e4e4e7"/>
+  <text x="28" y="39" font-size="14" font-weight="600" fill="#18181b">Boards</text>
+  <text x="28" y="79" font-size="14" fill="#52525b">Inbox</text>
+
+  <!-- Page header -->
+  <text x="252" y="52" font-size="24" font-weight="700" fill="#18181b">Boards</text>
+  <rect x="1044" y="28" width="124" height="36" rx="8" fill="#18181b"/>
+  <text x="1064" y="51" font-size="14" fill="#ffffff">New project</text>
+
+  <!-- Project section: Product Launch — Name, then the settings-gear CTA (smaller), then the board-count caption -->
+  <text x="252" y="120" font-size="17" font-weight="600" fill="#18181b">Product Launch</text>
+  <g transform="translate(388,114)">
+    <circle r="11" fill="#f4f4f5"/>
+    <g stroke="#18181b" stroke-width="1.2" stroke-linecap="round">
+      <circle r="4" fill="none"/>
+      <circle r="1.2" fill="none"/>
+      <line x1="0" y1="-4" x2="0" y2="-6.5"/>
+      <line x1="0" y1="4" x2="0" y2="6.5"/>
+      <line x1="-4" y1="0" x2="-6.5" y2="0"/>
+      <line x1="4" y1="0" x2="6.5" y2="0"/>
+      <line x1="-2.8" y1="-2.8" x2="-4.6" y2="-4.6"/>
+      <line x1="2.8" y1="2.8" x2="4.6" y2="4.6"/>
+      <line x1="-2.8" y1="2.8" x2="-4.6" y2="4.6"/>
+      <line x1="2.8" y1="-2.8" x2="4.6" y2="-4.6"/>
+    </g>
+  </g>
+  <text x="410" y="120" font-size="13" fill="#71717a">2 boards</text>
+
+  <!-- Board cards row -->
+  <g>
+    <rect x="252" y="146" width="216" height="112" rx="10" fill="#ffffff" stroke="#e4e4e7"/>
+    <rect x="252" y="146" width="216" height="34" rx="10" fill="#b5c9e8"/>
+    <rect x="252" y="166" width="216" height="14" fill="#ffffff"/>
+    <text x="268" y="214" font-size="15" font-weight="600" fill="#18181b">Sprint 12</text>
+  </g>
+  <g>
+    <rect x="484" y="146" width="216" height="112" rx="10" fill="#ffffff" stroke="#e4e4e7"/>
+    <rect x="484" y="146" width="216" height="34" rx="10" fill="#e0c4c4"/>
+    <rect x="484" y="166" width="216" height="14" fill="#ffffff"/>
+    <text x="500" y="214" font-size="15" font-weight="600" fill="#18181b">Backlog Ideas</text>
+  </g>
+  <g>
+    <rect x="716" y="146" width="216" height="112" rx="10" fill="none" stroke="#d4d4d8" stroke-dasharray="6 4"/>
+    <text x="778" y="206" font-size="14" fill="#52525b">＋ New board</text>
+  </g>
+
+  <!-- Shared-with-you project: same slot, same order (name → icon → caption), muted icon color -->
+  <text x="252" y="326" font-size="17" font-weight="600" fill="#18181b">Platform Engineering</text>
+  <g transform="translate(478,320)">
+    <circle r="11" fill="#f4f4f5"/>
+    <g stroke="#71717a" stroke-width="1.2" stroke-linecap="round">
+      <circle r="4" fill="none"/>
+      <circle r="1.2" fill="none"/>
+      <line x1="0" y1="-4" x2="0" y2="-6.5"/>
+      <line x1="0" y1="4" x2="0" y2="6.5"/>
+      <line x1="-4" y1="0" x2="-6.5" y2="0"/>
+      <line x1="4" y1="0" x2="6.5" y2="0"/>
+      <line x1="-2.8" y1="-2.8" x2="-4.6" y2="-4.6"/>
+      <line x1="2.8" y1="2.8" x2="4.6" y2="4.6"/>
+      <line x1="-2.8" y1="2.8" x2="-4.6" y2="4.6"/>
+      <line x1="2.8" y1="-2.8" x2="4.6" y2="-4.6"/>
+    </g>
+  </g>
+  <text x="500" y="326" font-size="13" fill="#71717a">shared with you</text>
+
+  <!-- Annotations -->
+  <text x="252" y="292" font-size="12" fill="#a1a1aa">Confirmed: settings icon, right after the project name, board count still follows after it — 20px hit circle,</text>
+  <text x="252" y="306" font-size="12" fill="#a1a1aa">~8px gear glyph. aria-label="Manage Product Launch" (owner) / "View Platform Engineering" (member).</text>
+</svg>
