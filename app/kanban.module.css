@@ -1528,11 +1528,28 @@
   gap: var(--sv-space-2);
   position: sticky;
   top: calc(-1 * var(--sv-space-6));
-  /* Same reasoning as `.dialogStickyHeader`'s own z-index comment: 0, not
-     1 — only needs to clear the unpositioned content scrolling beneath
-     it, not `Dialog`'s own `.close` button (z-index: 1, `packages/ui`),
-     which must stay on top of this header once they overlap on scroll. */
-  z-index: 0;
+  /* 1, not 0 (`.dialogStickyHeader`'s own value, which this originally
+     copied) — that reasoning assumed every scrolling sibling below this
+     header is *unpositioned* (`position: static`), which a plain
+     `z-index: 0` already paints above. Wrong here: `.cardMetaRow`'s
+     Labels/Due date/Assignees controls are each built on `Popover`
+     (`packages/ui`), whose container is `position: relative` — a
+     positioned box, not static, so it competes directly with this
+     header's own stacking level instead of sitting safely below it.
+     Reported live, with a screenshot: scrolling the dialog left the due-
+     date box and the label/assignee "+" buttons floating on *top* of this
+     header's title instead of sliding underneath it. Root cause wasn't a
+     missing background (there is one, `background` below) — same
+     `z-index: 0` = same stacking level as those `position: relative`
+     Popover containers, and since they render later in the DOM (inside
+     `.cardMetaRow`, below this header), tree order broke the tie in their
+     favor. `z-index: 1` gives this header an unambiguous edge over them
+     instead of relying on DOM order. This reopens the exact tie
+     `.dialogStickyHeader` avoided by *staying* at 0 — `Dialog`'s own
+     `.close` button (`packages/ui`) is bumped to `z-index: 2` in the same
+     fix, so close still unambiguously wins over this header, no tie
+     either. */
+  z-index: 1;
   margin: calc(-1 * var(--sv-space-6)) calc(-1 * var(--sv-space-6)) 0;
   background: var(--sv-color-surface-raised);
   border-bottom: 1px solid var(--sv-color-border);
