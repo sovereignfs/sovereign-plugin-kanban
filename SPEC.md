@@ -8,10 +8,56 @@
 ## Status
 
 ✅ Phase 1 complete — K.1–K.16 shipped. 🚧 Phase 2 in progress — K.17–K.19
-shipped, manifest at `0.20.7`; K.20 partially shipped within the same
+shipped, manifest at `0.20.8`; K.20 partially shipped within the same
 version (see its own entry below and the ⬜/✅ breakdown in K.20's own
 task section) — full K.20 completion is still pending, not yet a version
 bump of its own.
+
+**Card title wraps instead of overflowing (0.20.7 → 0.20.8).** Reported
+directly, with a screenshot: a long card title stayed on one line and ran
+past the header's own width instead of wrapping. Root cause: the title
+field was a single-line `Input` (`<input>`), which can't wrap by
+definition — no amount of CSS would have fixed it, since a plain
+`<input>`'s content is always one line. Fixed by switching to
+`@sovereignfs/ui`'s `Textarea` with a new `autoGrow` prop (`packages/ui`,
+now `0.60.0`) — a real multi-line field that grows its own height to fit
+wrapped content, Trello/Notion/Linear-style, rather than scrolling
+internally or needing a manual drag-resize. Enter still commits instead of
+inserting a newline (`e.preventDefault()` in `CardHeader`'s own
+`onKeyDown`, ahead of the existing commit-on-Enter handler) — a title is a
+single logical line that wraps for display, not a field a user should be
+able to hard-break.
+
+**Two real layout bugs found live, neither guessed at**, both from
+`Textarea`'s base styling fighting the header's flex layout — the old
+`Input`-based version never hit either, since `Input` behaves differently
+in both respects:
+1. `Textarea.module.css`'s own `width: 100%` acts as the flex item's
+   main-size hint in a way `Input`'s did not, so the title tried to claim
+   the whole row width for itself, pushing the delete button onto its own
+   line below a wrapped title. Fixed by restoring a `width: auto
+   !important` override (`.cardTitleInput`) — present before for a
+   different reason (fighting `Input.module.css`'s fixed `height: 36px`),
+   repurposed here.
+2. With `align-items: center` (the row's existing alignment), a wrapped
+   multi-line title re-centered the delete button against the *whole*
+   grown block on every keystroke, drifting it away from `Dialog`'s own
+   `.close` button, which stays fixed top-right regardless of content
+   height — perfectly aligned for one line, visibly detached by two.
+   Fixed by switching `.cardHeader` to `align-items: flex-start` (the
+   title itself is unaffected — always the row's tallest item, so its own
+   top position is identical either way) and adding a new
+   `.cardHeaderDeleteButton` class (`align-self: flex-start; margin-top:
+   calc(var(--sv-space-1) * 1.5)`) tuned live via `getBoundingClientRect()`
+   to match `.close`'s vertical center for a single-line title. Re-verified
+   with a real 2-line title afterward: delete-button/close-button centers
+   landed within 1px of each other, same as the single-line case — the fix
+   holds regardless of how tall the title grows, unlike the old
+   center-alignment behavior. Verified live on both desktop (typing a long
+   title in-place, confirming it wraps, grows, and Enter doesn't insert a
+   literal newline) and a real 375px mobile viewport (in-body header
+   wraps correctly beneath `OverlayHeader`'s own truncated single-line
+   pinned title, `⋮` menu trigger unaffected).
 
 **Card detail modal header/layout retouch, three rounds of direct
 developer feedback on the same modal (0.20.6 → 0.20.7).** (1) **Header

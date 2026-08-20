@@ -7,9 +7,9 @@ import {
   ConfirmDialog,
   Dialog,
   Icon,
-  Input,
   Menu,
   Tabs,
+  Textarea,
   useCommitOnEnterOrBlur,
   useIsMobile,
   useOverlaySecondRow,
@@ -154,15 +154,25 @@ function CardHeader({
     // none of this header's close-button-clearance styling applies there
     // either.
     <div className={isMobile ? styles.cardHeaderMobile : styles.cardHeader}>
-      <Input
+      <Textarea
         className={styles.cardTitleInput}
+        autoGrow
+        rows={1}
         value={title}
         disabled={titlePending}
         aria-label="Card title"
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') setTitle(card.title);
-          else titleHandlers.onKeyDown(e);
+          if (e.key === 'Escape') {
+            setTitle(card.title);
+            return;
+          }
+          // A title wraps for display but stays one logical line — Enter
+          // commits (matching the old single-line `Input`'s behavior)
+          // instead of inserting a newline, which a plain `<textarea>`
+          // would otherwise do by default.
+          if (e.key === 'Enter') e.preventDefault();
+          titleHandlers.onKeyDown(e);
         }}
         onBlur={titleHandlers.onBlur}
       />
@@ -198,6 +208,7 @@ function CardHeader({
         />
       ) : (
         <Button
+          className={styles.cardHeaderDeleteButton}
           variant="ghost"
           size="sm"
           aria-label="Delete card"
