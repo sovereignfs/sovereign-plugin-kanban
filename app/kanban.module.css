@@ -2537,7 +2537,7 @@
      bespoke 44px box (see MobileBoardHeader's own comment) — its own
      padding is what actually drives this row's rendered height now, not a
      fixed value here. */
-  padding: var(--sv-space-1);
+  padding: var(--sv-space-1) var(--sv-space-2);
   background: var(--sv-color-surface);
 }
 
