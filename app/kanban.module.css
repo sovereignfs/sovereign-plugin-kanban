@@ -829,23 +829,25 @@
   margin-top: 0;
 }
 
-/* `PageHeader`'s own title — now the page's actual first element (see
-   `(home)/page.tsx`) — pulled up to align its top edge with the sidebar's
-   own first link ("Boards"): `PageContainer`'s top padding (`padding="md"`
-   default, --sv-space-8 = 32px) is double `.sidebar`'s (--sv-space-4 =
-   16px), so without this the title sits visibly lower than "Boards"
-   (measured live via getBoundingClientRect). Desktop-only (`.sidebar`
-   itself is hidden below 768px, see its own media query) — mobile has no
-   sidebar to align to, and `PageContainer`'s own top padding is already
-   half this at mobile width (`padMd`'s mobile override, --sv-space-4 =
-   16px), so applying the same compensation there would overshoot into
-   negative space, same failure mode this replaced when the alignment
-   target used to be `.projectGroup:first-of-type` instead of this title
-   (found live, before `PageHeader` existed on this page: the heading's top
-   edge landed ~1px below the mobile header with no breathing room at all). */
+/* `PageHeader`'s own title is mobile-only: on desktop the sidebar already
+   carries the "Boards" identity (see `.sidebar`'s own media query below),
+   so a second "Kanban" title in the main content area read as redundant
+   (developer-requested). Hidden outright above the 768px breakpoint rather
+   than just visually de-emphasized. With the header gone, `.main`'s only
+   remaining top offset is `PageContainer`'s own `padMd` (--sv-space-8,
+   32px) — double `.sidebar`'s own top padding (--sv-space-4, 16px), so
+   "MY PROJECTS" sat 16px lower than "Boards" (developer-reported).
+   `.projectGroup:first-of-type` (below) pulls up by that same 16px on
+   desktop to bring the two flush, mirroring the compensation the old
+   `.homePageHeader` rule used to apply before this page had its own
+   `PageHeader` at all. */
 @media (min-width: 769px) {
   .homePageHeader {
-    margin-top: calc(-1 * var(--sv-space-6));
+    display: none;
+  }
+
+  .projectGroup:first-of-type {
+    margin-top: calc(-1 * var(--sv-space-4));
   }
 }
 
@@ -867,9 +869,27 @@
 
 .projectHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--sv-space-2);
   margin-bottom: var(--sv-space-4);
+}
+
+/* Wraps the name/count row and the optional description underneath it, so
+   both stack as one column that absorbs the row's slack (`flex: 1 1 auto`,
+   moved down from `.projectTitleRow` itself) while `.projectManageButton`
+   stays pinned to the block's top-right edge — `.projectHeader` switched
+   from `align-items: center` to `flex-start` for the same reason, since a
+   two-line block centered against a single-line button reads oddly. */
+.projectTitleColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-1);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.projectDescription {
+  color: var(--sv-color-text-muted);
 }
 
 /* Name + board count, grouped so they read as one line together
@@ -890,7 +910,6 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--sv-space-2);
-  flex: 1 1 auto;
   min-width: 0;
 }
 
