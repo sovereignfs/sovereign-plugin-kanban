@@ -2537,7 +2537,7 @@
      bespoke 44px box (see MobileBoardHeader's own comment) — its own
      padding is what actually drives this row's rendered height now, not a
      fixed value here. */
-  padding: var(--sv-space-1);
+  padding: var(--sv-space-1) var(--sv-space-2);
   background: var(--sv-color-surface);
 }
 
@@ -2615,12 +2615,17 @@
   min-height: 0;
 }
 
+/* No padding of its own — now a direct child of `.mobileListBody`
+   (`MobileListSlide.tsx`), which already supplies the box's own gutter on
+   every side, matching desktop's `.listHeader` (no padding, relies on
+   `.list`'s). Previously rendered outside that box via
+   `SwipableMobileCarouselSlideHeader`, where its own padding was load-
+   bearing; kept unpadded now avoids double-padding against the box's edge. */
 .mobileListHeaderRow {
   display: flex;
   align-items: center;
   gap: var(--sv-space-2);
   min-height: var(--sv-space-8);
-  padding: var(--sv-space-2);
 }
 
 .mobileListName {
