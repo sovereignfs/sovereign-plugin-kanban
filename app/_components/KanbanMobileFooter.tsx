@@ -88,7 +88,7 @@ export function KanbanMobileFooter({
         }
         leftIcons={[
           {
-            icon: <Icon name="layout-dashboard" size="md" aria-hidden />,
+            icon: <Icon name="square-kanban" size="md" aria-hidden />,
             label: 'Boards',
             active: isBoards,
             onClick: () => router.push('/kanban'),
