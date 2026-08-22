@@ -35,6 +35,10 @@ export const BOARD_COLORS: readonly PaletteColor[] = [
   { id: 'mist', name: 'Mist', value: '#c4dde0', textOn: 'dark' },
   { id: 'stone', name: 'Stone', value: '#d6d3cb', textOn: 'dark' },
   { id: 'slate', name: 'Slate', value: '#c9cbd4', textOn: 'dark' },
+  // Added to fill out ColorPicker's 16-box (2-row-of-8) grid — a warm
+  // pastel this set was missing (the existing 8 skew blue/green/purple
+  // with only "sand" leaning warm), same muted/desaturated character.
+  { id: 'butter', name: 'Butter', value: '#e8e2b5', textOn: 'dark' },
   // Darker options — same muted/desaturated character as the pastels above
   // (not vivid/saturated), just shifted toward the dark end of each hue
   // rather than the light end, so they read as part of the same curated
@@ -43,6 +47,9 @@ export const BOARD_COLORS: readonly PaletteColor[] = [
   { id: 'forest', name: 'Forest', value: '#3f5c4c', textOn: 'light' },
   { id: 'wine', name: 'Wine', value: '#6b3b4a', textOn: 'light' },
   { id: 'charcoal', name: 'Charcoal', value: '#494952', textOn: 'light' },
+  // Second half of the 16-box grid fill — a dark purple to pair with
+  // "lilac" the same way "wine"/"clay" and "forest"/"sage" already pair.
+  { id: 'plum', name: 'Plum', value: '#5a3b66', textOn: 'light' },
 ] as const;
 
 const FALLBACK: PaletteColor = { id: 'sky', name: 'Sky', value: '#b5c9e8', textOn: 'dark' };
