@@ -65,7 +65,16 @@ export default async function BoardPage({
           --kanban-board-color: ${resolvedColor.value};
         }`}</style>
       )}
-      <PageContainer maxWidth="full">
+      {/* padding="none" — BoardView owns its own gutter on both the desktop
+          and mobile trees instead of inheriting PageContainer's, since the
+          two need different insets from the same page: the mobile board
+          header must sit flush against the primary header/viewport edges
+          with zero gutter, while the desktop toolbar and mobile list
+          content both still want a real gutter, just applied directly by
+          their own rules (`.boardToolbar`/`.listsRow`/`.mobileBoardContent`)
+          rather than cancelled-then-reapplied from an ancestor's padding.
+          See those classes' own comments. */}
+      <PageContainer maxWidth="full" padding="none">
         <BoardView board={board} cardDetail={cardDetail} currentUser={currentUser} />
       </PageContainer>
     </>

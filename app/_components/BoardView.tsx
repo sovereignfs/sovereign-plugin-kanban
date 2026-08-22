@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useOptimistic, useState, useTransition } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   closestCenter,
   closestCorners,
@@ -366,6 +366,28 @@ export function BoardView({
  * title) and no member avatar stack (the member list is already reachable
  * via Share) — a deliberate scope cut to keep this compact, documented in
  * SPEC.md's K.13 status entry.
+ *
+ * A bespoke row, not the shared `OverlayHeader` — `OverlayHeader` always
+ * renders a trailing close (×) button with no way to omit it, but this
+ * needs a single leading back affordance instead (developer-requested: a
+ * `circle-chevron-left` icon before the title, matching this plugin's own
+ * `MobileListHeader` shape — title + trailing kebab, flush against the
+ * surface, no boxed-off bar with its own trailing close). `OverlayHeader`'s
+ * own doc comment explicitly calls this out as the case to build a custom
+ * header for. "Back" still navigates to `/kanban` (the boards list) — a
+ * real page, not an overlay, so there's no dismiss state to restore. The
+ * back button is a plain `Button variant="ghost" size="sm"` — the exact
+ * same component/size as the trailing kebab below, not a bespoke touch
+ * target — so both icons share one sizing/hover/touch-target convention
+ * instead of two independently-tuned ones, and the row's height is driven
+ * by the same `(pointer: coarse)`-gated minimum `Button` already uses
+ * everywhere else in this plugin, not a hand-picked constant.
+ * `.mobileBoardOverlayHeader` bleeds the row out to `PageContainer`'s own
+ * edges on all sides (`margin-inline` cancels the 16px horizontal gutter,
+ * `margin-top` cancels the 16px top padding so this sits flush under the
+ * primary header above with no gap) — see that class's own comment for why
+ * a negative margin here doesn't get clipped by `.mobileBoardWrap`'s
+ * `overflow: hidden`.
  */
 function MobileBoardHeader({
   board,
@@ -376,11 +398,20 @@ function MobileBoardHeader({
   onOpenShare: () => void;
   onOpenSettings: () => void;
 }) {
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className={styles.mobileBoardHeader}>
-      <Typography variant="h4" as="h1" className={styles.mobileBoardTitle}>
+    <div className={styles.mobileBoardOverlayHeader}>
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label="Back to boards"
+        onClick={() => router.push('/kanban')}
+      >
+        <Icon name="circle-chevron-left" size="md" aria-hidden={true} />
+      </Button>
+      <Typography variant="h4" as="span" className={styles.mobileBoardTitle}>
         {board.name}
       </Typography>
       <Menu
@@ -470,7 +501,7 @@ function EmptyBoard({ boardId, color }: { boardId: string; color: string }) {
       heading="Add your first list"
       description={'Lists organize this board’s cards — try "To Do", "In Progress", "Done".'}
       action={<AddListSlot boardId={boardId} variant="empty" />}
-      className={textOnClass}
+      className={[textOnClass, styles.emptyBoardGutter].filter(Boolean).join(' ')}
     />
   );
 }

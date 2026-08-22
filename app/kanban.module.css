@@ -87,6 +87,20 @@
   --sv-color-text-subtle: color-mix(in srgb, var(--sv-color-text-on-dark-fill) 55%, transparent);
 }
 
+/* Desktop-only horizontal gutter for the empty-board state — on desktop
+   it's a plain sibling of `.boardToolbar` directly inside `.body`, not
+   wrapped by anything that supplies a gutter (`.listsRow`, which only
+   renders once there's at least one list, does that job for the non-empty
+   case). Now that `page.tsx`'s `PageContainer` is `padding="none"` (see its
+   own comment), nothing upstream provides this inset anymore. Mobile needs
+   no equivalent here — `.mobileBoardContent` already pads both this and
+   `MobileBoardView` consistently. */
+@media (min-width: 769px) {
+  .emptyBoardGutter {
+    padding: 0 var(--sv-space-8);
+  }
+}
+
 /* --- Top header (web only; every page) ------------------------------------ */
 
 .header {
@@ -317,6 +331,300 @@
   }
 }
 
+/* --- Mobile header (KanbanMobileHeader) ------------------------------------ */
+
+/* `MobileHeader` is already `position: sticky` internally (see
+   `@sovereignfs/ui`'s own CSS) — this just constrains it the same way the
+   desktop `.header` is constrained: a plain flex-column sibling above
+   `.body`, not scrolling with it. No `display: none` media query needed
+   here (unlike `.header` above) — `KanbanMobileHeader` decides whether to
+   render at all via `useIsMobile`, so there's no desktop-visible state to
+   hide. */
+.mobileHeader {
+  flex-shrink: 0;
+}
+
+/* Same accent-filled instance-initial badge as the desktop header's
+   `.headerBrandBadge`, just sized to `MobileHeader`'s own 36px default-logo
+   convention (`packages/ui`'s `.defaultLogo`) rather than the desktop bar's
+   28px, so a real logo badge sits flush with where the fallback "S" badge
+   would otherwise go. */
+.mobileHeaderLogo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--sv-radius-md);
+  background-color: var(--sv-color-accent);
+  color: var(--sv-color-text-on-accent);
+  font-size: var(--sv-font-size-sm);
+  font-weight: var(--sv-font-weight-semibold);
+  text-decoration: none;
+}
+
+/* Bare icon-button reset for the mobile header's bell — same treatment as
+   the desktop header's `.headerAvatarLink`/`.headerAppsButton`, plus
+   `position: relative` so `.notificationBadge` (below) can anchor to it
+   directly, matching the real `NotificationBell`'s own `.trigger`/`.badge`
+   pair exactly (badge positioned against the trigger itself, not a nested
+   wrapper span). `color` starts muted, same as the real `.trigger` — only
+   goes to full-contrast on hover/active, not at rest. */
+.mobileHeaderIconButton {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--sv-touch-target-min, 44px);
+  height: var(--sv-touch-target-min, 44px);
+  padding: 0;
+  border: none;
+  border-radius: var(--sv-radius-md);
+  background: transparent;
+  color: var(--sv-color-text-muted);
+  cursor: pointer;
+}
+
+/* Same treatment as the real `NotificationBell`'s own `.triggerActive` —
+   a persistent background while the panel is open, not just on hover. */
+.mobileHeaderIconButtonActive {
+  background: var(--sv-color-border);
+  color: var(--sv-color-text-primary);
+}
+
+@media (hover: hover) {
+  .mobileHeaderIconButton:hover {
+    background: var(--sv-color-surface-sunken);
+    color: var(--sv-color-text-primary);
+  }
+}
+
+/* --- Notification bell panel (KanbanNotificationBell) ---------------------- */
+/* Every rule below mirrors `runtime/app/(platform)/_components/
+   NotificationBell.module.css` token-for-token and pixel-for-pixel (same
+   semantic tokens, same sizes) — the real platform panel, reproduced
+   inside a `Popover` (this plugin can't import the real component under
+   `shell: minimal`; see `KanbanNotificationBell.tsx`'s own doc comment). */
+
+.notificationBadge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  background: var(--sv-color-error-text);
+  color: white;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: var(--sv-font-weight-bold);
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.notificationPanelHeader {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sv-space-2);
+  padding: var(--sv-space-3) var(--sv-space-3) var(--sv-space-3) var(--sv-space-4);
+  background: var(--sv-color-surface);
+  border-bottom: 1px solid var(--sv-color-border);
+}
+
+.notificationPanelTitle {
+  font-size: var(--sv-font-size-sm);
+  font-weight: var(--sv-font-weight-semibold);
+  color: var(--sv-color-text-primary);
+  flex: 1;
+}
+
+.notificationPanelActions {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+}
+
+.notificationActionBtn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--sv-color-text-muted);
+  font-size: var(--sv-font-size-caption);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .notificationActionBtn:hover {
+    color: var(--sv-color-text-primary);
+  }
+}
+
+.notificationCloseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--sv-radius-sm);
+  background: transparent;
+  color: var(--sv-color-text-muted);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .notificationCloseBtn:hover {
+    background: var(--sv-color-surface-sunken);
+    color: var(--sv-color-text-primary);
+  }
+}
+
+.notificationList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notificationEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sv-space-3);
+  padding: var(--sv-space-10) var(--sv-space-4);
+}
+
+.notificationEmptyIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--sv-radius-full);
+  background: var(--sv-color-surface-sunken);
+  color: var(--sv-color-text-muted);
+}
+
+.notificationItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sv-space-3);
+  padding: var(--sv-space-3);
+  border-bottom: 1px solid var(--sv-color-border);
+}
+
+.notificationItem:last-child {
+  border-bottom: none;
+}
+
+.notificationCategoryIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--sv-radius-full);
+  margin-top: 1px;
+}
+
+.iconGreen {
+  background: var(--sv-color-success-surface);
+  color: var(--sv-color-success-text);
+}
+
+.iconAmber {
+  background: var(--sv-color-warning-surface);
+  color: var(--sv-color-warning-text);
+}
+
+.iconNeutral {
+  background: var(--sv-color-surface-sunken);
+  color: var(--sv-color-text-muted);
+}
+
+.notificationItemBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notificationItemTitle {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--sv-color-text-primary);
+  font: inherit;
+  font-size: var(--sv-font-size-sm);
+  font-weight: var(--sv-font-weight-semibold);
+  line-height: 1.4;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  a.notificationItemTitle:hover,
+  button.notificationItemTitle:hover {
+    text-decoration: underline;
+  }
+}
+
+.notificationItemRead .notificationItemTitle {
+  color: var(--sv-color-text-subtle);
+}
+
+.notificationItemTime {
+  color: var(--sv-color-text-muted);
+}
+
+.notificationItemEnd {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  flex: none;
+  padding-top: 2px;
+}
+
+.notificationUnreadDot {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--sv-radius-full);
+  background: var(--sv-color-accent);
+  flex: none;
+}
+
+.notificationDismissBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--sv-radius-sm);
+  background: transparent;
+  color: var(--sv-color-text-muted);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .notificationDismissBtn:hover {
+    background: var(--sv-color-surface-sunken);
+    color: var(--sv-color-text-primary);
+  }
+}
+
 /* --- Home content row: secondary sidebar + main (Home/Inbox only) -------- */
 
 .contentRow {
@@ -345,6 +653,28 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow-y: auto;
+}
+
+/* `KanbanMobileFooter` renders `position: fixed; bottom: 0` (`.mobileFooterFixed`
+   above) — it's an overlay, not a normal-flow sibling, so `.main` has no
+   built-in awareness of it and its last content can end up scrolled
+   partway or fully behind the footer bar (found live: the last project
+   group's boards sitting flush against, and partly under, the footer).
+   Base value mirrors `MobileFooter`'s own real height exactly —
+   `min-height: 60px` (its `--sv-shell-footer-height` fallback, never
+   actually overridden here: `shell: minimal` has no `#sv-app-shell` for
+   `usePublishShellChromeHeight` to publish onto, see `KanbanMobileHeader`'s
+   own doc comment for the same gap on the header side) plus its own
+   `env(safe-area-inset-bottom)` bottom padding — rather than a plain
+   CSS-var reference that would silently stay at the unadjusted fallback on
+   a real notched device. `--sv-space-4` on top of that is deliberate extra
+   breathing room beyond the footer's own height — flush-with-the-footer
+   clearance alone still read as cramped (developer-requested more).
+   Desktop has no fixed footer at all, so this is mobile-only. */
+@media (max-width: 768px) {
+  .main {
+    padding-bottom: calc(60px + var(--sv-space-4) + env(safe-area-inset-bottom));
+  }
 }
 
 /* --- Secondary sidebar (web only; mobile layout is K.12) ----------------- */
@@ -487,19 +817,36 @@
   margin-top: var(--sv-space-8);
 }
 
-/* Pulls the first group's heading up to align with the sidebar's own first
-   link ("Boards") — `PageContainer`'s own top padding (`padding="md"`
-   default, --sv-space-8 = 32px) is double `.sidebar`'s (--sv-space-4 =
-   16px), so without this the first heading sits ~35px lower than "Boards"
-   (measured live via getBoundingClientRect, caught from a developer
-   screenshot). Compensated here, not on `PageContainer` itself — that's a
-   shared component used across the whole platform, this alignment concern
-   is specific to this one page's two-column layout. Lives on `.projectGroup`
-   now, not `.projectSection` — introducing the group wrapper means
-   `.projectSection:first-of-type` now correctly matches the first section
-   *within each group* instead of the first section on the whole page. */
+/* The first group doesn't need its own top margin on top of `PageHeader`'s
+   own `margin-bottom` (--sv-space-6, 24px) right above it — found live: the
+   two stacked to a 56px gap between "Kanban" and "My projects", visibly
+   more than the rest of the page's own rhythm (developer-reported as
+   "odd"). `PageHeader`'s margin is the sole spacer now, on both
+   breakpoints — same reasoning `.projectSection:first-of-type` already
+   applies one level down (its own first-child margin is smaller than its
+   siblings' for the identical reason). */
 .projectGroup:first-of-type {
-  margin-top: calc(-1 * var(--sv-space-6));
+  margin-top: 0;
+}
+
+/* `PageHeader`'s own title — now the page's actual first element (see
+   `(home)/page.tsx`) — pulled up to align its top edge with the sidebar's
+   own first link ("Boards"): `PageContainer`'s top padding (`padding="md"`
+   default, --sv-space-8 = 32px) is double `.sidebar`'s (--sv-space-4 =
+   16px), so without this the title sits visibly lower than "Boards"
+   (measured live via getBoundingClientRect). Desktop-only (`.sidebar`
+   itself is hidden below 768px, see its own media query) — mobile has no
+   sidebar to align to, and `PageContainer`'s own top padding is already
+   half this at mobile width (`padMd`'s mobile override, --sv-space-4 =
+   16px), so applying the same compensation there would overshoot into
+   negative space, same failure mode this replaced when the alignment
+   target used to be `.projectGroup:first-of-type` instead of this title
+   (found live, before `PageHeader` existed on this page: the heading's top
+   edge landed ~1px below the mobile header with no breathing room at all). */
+@media (min-width: 769px) {
+  .homePageHeader {
+    margin-top: calc(-1 * var(--sv-space-6));
+  }
 }
 
 .projectGroupLabel {
@@ -520,35 +867,70 @@
 
 .projectHeader {
   display: flex;
-  /* `center`, not `baseline` — baseline suited the plain name/caption
-     Typography pair, but reads oddly once a padded Button sits between
-     them (caught live, developer-inspected via devtools). */
   align-items: center;
-  /* space-2, not space-3 — tighter row rhythm, tuned together with
-     .projectManageButton's own negative-margin compensation below so the
-     *visible* gap around the button glyph lands close to the row's other
-     gaps rather than double it (caught live, developer-inspected). */
   gap: var(--sv-space-2);
   margin-bottom: var(--sv-space-4);
 }
 
-/* Manage-project CTA, sits right after the project name in .projectHeader's
-   flex row — the single entry point into ManageProjectDialog, replacing the
-   sidebar's previous separate Edit/Delete/Share icons. Reuses the DS's real
-   `Button` (variant="ghost" size="sm" + icon-only), the exact idiom
-   BoardView's own "Board options" trigger already establishes — no bespoke
-   button styling beyond spacing/hover overrides below.
+/* Name + board count, grouped so they read as one line together
+   (developer-requested: the count belongs right after the name, not on its
+   own line below) — `flex: 1 1 auto` grows this to absorb all the row's
+   slack, which is what actually pushes `.projectManageButton` (its only
+   sibling in `.projectHeader`) flush to the row's right edge with no
+   `margin-left: auto`/`justify-content` trick needed on the button itself.
+   `flex-wrap: wrap` + `min-width: 0` let the count drop to its own line
+   under the name on a narrow viewport if the two don't fit together,
+   rather than either one getting clipped or forcing the row to overflow.
+   `baseline`, not `.projectHeader`'s own `center` — appropriate again now
+   that the manage button no longer sits between name and count the way it
+   used to (see .projectManageButton's own doc comment): a plain two-size
+   text pair reads better on its type baseline than vertically centered. */
+.projectTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sv-space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+}
 
-   The negative margins cancel ghost `Button`'s own horizontal padding
-   (`--sv-space-3`) on both sides — the same illusion `.boardOptionsMenu`
-   already documents: `.projectHeader`'s `gap` alone reads visually wrong
-   once a padded button sits between two plain Typography elements, since
-   the *glyph* is inset a further space-3 inside its own invisible button
-   box. Without this, the name→icon and icon→caption gaps both read
-   noticeably wider than the row's other gaps. */
+/* Manage-project CTA — the single entry point into `ManageProjectDialog`,
+   replacing the sidebar's previous separate Edit/Delete/Share icons.
+   Reuses the DS's real `Button` (variant="ghost" size="sm" + icon-only),
+   the exact idiom BoardView's own "Board options" trigger already
+   establishes. Pinned to the row's right edge by `.projectTitleRow`'s own
+   `flex: 1 1 auto` above (developer-requested) — previously sat *inline*
+   right after the name, which needed a matching pair of negative margins to
+   cancel the button's own padding so its glyph didn't read as oversized
+   gaps between two plain Typography elements; now that it's a standalone
+   sibling with real breathing room on both sides, that compensation no
+   longer applies (removed) — the button's natural padding is exactly what
+   should separate its glyph from the row's edges. */
 .projectManageButton {
-  margin-left: calc(-1 * var(--sv-space-3));
-  margin-right: calc(-1 * var(--sv-space-3));
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Expands the tappable region to (at least) the platform's minimum touch
+   target without growing the visible button box — the box itself has to
+   stay small (`size="sm"` + the negative-margin cancel above) to keep the
+   row's visible gaps even, but its *measured* hit target was only 38×30px
+   (found live), well under the 44px iOS HIG / Material minimum for a
+   button that opens a whole management dialog. `::after` renders as a
+   child of the button, so a click anywhere in its expanded box still
+   resolves to the button — same technique `RadioGroup`'s own touch-target
+   expansion uses, adapted for a real `<button>` here instead of a wrapped
+   native input. `-7px` brings 30px height up to 44px exactly; the
+   resulting ~52px width is a harmless overshoot, not a second value to
+   maintain. Desktop is unaffected — `size="sm"`'s own hit box is already
+   comfortable for a mouse pointer, and expanding it there would just eat
+   into the row's neighboring gaps for no benefit. */
+@media (max-width: 768px) {
+  .projectManageButton::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
+  }
 }
 
 /* `:hover:not(:disabled)` + `!important` to win over ghost `Button`'s own
@@ -626,9 +1008,20 @@
   font-weight: var(--sv-font-weight-regular) !important;
 }
 
+/* Plain centered placeholder — deliberately no colored/sunken banner strip
+   like a real board card's own top (developer-requested: a ghost "add new"
+   card should read as an empty slot, not mimic a real card's anatomy).
+   `min-height` matches a real `.boardCardTile`'s own natural height
+   (banner + footer, measured live) so the two read as the same size without
+   actually copying its banner+footer structure. `height: 100%` additionally
+   stretches this to match a taller sibling in the same grid row on a
+   multi-column (desktop) layout — a no-op on the single-column mobile
+   layout, where every tile sits in its own row regardless. */
 .newBoardCard {
-  min-height: 88px;
+  min-height: 87px;
   width: 100%;
+  height: 100%;
+  color: var(--sv-color-text-muted);
   /* `!important` needed to win over `Button`'s own base `border: 1px solid
      transparent` — same CSS-injection-order precedent as `.addListCard`
      (`@sovereignfs/ui`'s stylesheet loads after the plugin's, so equal
@@ -838,23 +1231,21 @@
    Always a plain neutral surface — board color is only ever a background
    for the lists area (`.body`), never either header (reversed from an
    earlier pass that shaded both headers a darker mix of the board color;
-   kept only as much of that as the board color itself calls for). This
-   toolbar lives inside `PageContainer`'s own gutter padding (`board/
-   [boardId]/page.tsx` uses the `md` default, `--sv-space-8` on desktop —
-   this row only ever renders on desktop; mobile uses `MobileBoardHeader`
-   instead, so there's no need to also cancel PageContainer's separate
-   mobile gutter value here), so a plain background wouldn't reach the
-   viewport edges or sit flush under `.header` above it — negative margins
-   equal to that gutter cancel it on the top/left/right; bottom is a real
-   (positive) margin — space between this bar and the lists below, not a
-   bleed — caught live too: the very first pass left zero gap, the lists
-   row butting straight up against the toolbar's own bottom edge. */
+   kept only as much of that as the board color itself calls for). `board/
+   [boardId]/page.tsx`'s `PageContainer` uses `padding="none"` (BoardView
+   owns its own gutter directly instead — see that prop's own comment), so
+   this toolbar's own `padding` is what creates its horizontal gutter,
+   reaching the viewport edges via its plain background with no bleed
+   needed to cancel an ancestor's padding anymore. `margin-bottom` is a
+   real (positive) margin — space between this bar and the lists below, not
+   a bleed — caught live: the very first pass left zero gap, the lists row
+   butting straight up against the toolbar's own bottom edge. */
 .boardToolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sv-space-4);
-  margin: calc(-1 * var(--sv-space-8)) calc(-1 * var(--sv-space-8)) var(--sv-space-4);
+  margin-bottom: var(--sv-space-4);
   padding: var(--sv-space-2) var(--sv-space-8);
   /* A step down from the primary header's plain surface, same as the canvas
      below it — the board color is only ever a background for the lists area
@@ -1245,20 +1636,19 @@
   border-radius: var(--sv-radius-sm);
 }
 
-/* Bleeds past `PageContainer`'s own `--sv-space-8` (32px) gutter, then
-   re-adds a smaller `--sv-space-4` of its own — the lists read as the
-   board's *canvas*, not an article's body copy, so they should sit close to
-   the viewport edges the way Trello's own board area does, not carry the
-   same generous reading-width gutter the toolbar's title/controls keep
-   above it (that comparison — our board vs. Trello's own — is what this was
-   caught against; unlike `.boardToolbar`, which cancels-then-reapplies the
-   *same* 32px so its own content stays where it was, this reapplies less). */
+/* Own gutter is a smaller `--sv-space-4`, not `.boardToolbar`'s
+   `--sv-space-8` — the lists read as the board's *canvas*, not an article's
+   body copy, so they should sit close to the viewport edges the way
+   Trello's own board area does, not carry the same generous reading-width
+   gutter the toolbar's title/controls keep above it (that comparison — our
+   board vs. Trello's own — is what this was caught against). `page.tsx`'s
+   `PageContainer` uses `padding="none"` (see that prop's own comment), so
+   this is a plain inset now, not a bleed past an ancestor's padding. */
 .listsRow {
   display: flex;
   align-items: flex-start;
   gap: var(--sv-space-4);
   overflow-x: auto;
-  margin: 0 calc(-1 * var(--sv-space-8));
   padding: 0 var(--sv-space-4) var(--sv-space-4);
 }
 
@@ -1403,8 +1793,16 @@
   gap: var(--sv-space-2);
 }
 
+/* `!important` required on `justify-content` — `Button`'s own base class
+   (packages/ui/src/components/Button/Button.module.css) sets
+   `justify-content: center`, and both classes land on the same element at
+   equal specificity (one class each); Button's own stylesheet loads after
+   this plugin's, so it wins the cascade without `!important` (same
+   DS-injection-order quirk documented elsewhere in this file) — caught live
+   as "+ Add a card" rendering centered instead of left-aligned like the
+   card titles above it, despite this rule already being here. */
 .addCardTrigger {
-  justify-content: flex-start;
+  justify-content: flex-start !important;
   color: var(--sv-color-text-muted);
 }
 
@@ -2041,26 +2439,85 @@
   background: var(--sv-color-accent);
 }
 
-.mobileFooterAppIcon {
-  width: 28px;
-  height: 28px;
+/* The footer's own centered launcher button (`MobileFooter`'s `launcherIcon`
+   slot) — matches the real `MobileNav`'s own `.navIcon` exactly
+   (`--sv-icon-size-md`, the same size `MobileFooter` itself falls back to
+   for its default grid icon when no `launcherIcon` is supplied). Previously
+   shared `.mobileFooterAppIcon` (28px, sized for the drawer grid below) with
+   the drawer tiles — a real, visible size mismatch found live (the footer's
+   center icon rendered ~40% larger than the reference), since 28px is well
+   past `md`'s 20px. */
+.mobileFooterLauncherIcon {
+  width: var(--sv-icon-size-md);
+  height: var(--sv-icon-size-md);
+  object-fit: contain;
+}
+
+:global([data-theme='dark']) .mobileFooterLauncherIcon {
+  filter: invert(1);
+}
+
+/* Drawer grid tile icon — matches the real `MobileNav`'s own
+   `.drawerGridIconImg` exactly (26px, not the 28px this used to share with
+   the footer launcher above). */
+.mobileFooterDrawerIcon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+:global([data-theme='dark']) .mobileFooterDrawerIcon {
+  filter: invert(1);
 }
 
 /* --- Mobile board view (K.13) ---------------------------------------------- */
 
-.mobileBoardHeader {
+/* Bespoke board-title row (see MobileBoardHeader's own comment for why this
+   isn't the shared `OverlayHeader`). `page.tsx`'s `PageContainer` is
+   `padding="none"` (BoardView owns its own gutter directly instead — see
+   that prop's own comment), so this row needs no bleed at all anymore: it
+   sits flush against the primary header above and the viewport's left/right
+   edges simply because nothing upstream insets it, and its own `padding`
+   below is what creates the internal 16px text/button inset that used to
+   come from cancelling-then-reapplying `PageContainer`'s. A prior pass did
+   this via negative `margin-inline`/`margin-top` bleeding past
+   `PageContainer`'s old default padding — no longer needed now that the
+   ancestor contributes zero padding to bleed past. Background is the
+   opaque `--sv-color-surface` every header in this plugin uses — never
+   removed, since `.body`'s own `--kanban-board-color` wash sits directly
+   behind this row and no header in this plugin ever shows that board-color
+   canvas through it (see `.body`'s own comment). No border-bottom: this
+   reads like a list's own title row (MobileListHeader below: title +
+   count, flush against the surface it sits on), not a boxed-off bar with a
+   hard edge. */
+.mobileBoardOverlayHeader {
   display: flex;
   align-items: center;
-  gap: var(--sv-space-2);
-  padding: var(--sv-space-3) 0;
+  gap: var(--sv-space-1);
+  /* Vertical padding matches `.mobileListHeaderRow` below (this plugin's own
+     already-tuned reference for "list-header-scale" compactness), not
+     `OverlayHeader`'s own `--sv-space-3` — developer-reported the row still
+     read too tall/boxy against a reference list-header row from another
+     plugin. The leading back button is a plain `Button size="sm"`, not a
+     bespoke 44px box (see MobileBoardHeader's own comment) — its own
+     padding is what actually drives this row's rendered height now, not a
+     fixed value here. */
+  padding: var(--sv-space-1);
+  background: var(--sv-color-surface);
 }
 
 .mobileBoardTitle {
-  flex: 1 1 auto;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Typography's own `.h4` default (`--sv-font-size-md`) — a prior pass
+     shrank this to `--sv-font-size-sm` to read closer to a list-header
+     title, but developer follow-up asked for it back up a step ("a bit
+     bigger"), landing back on `h4`'s own unmodified size. No override
+     needed here at all now; kept as an explicit rule (rather than deleting
+     the class) since `flex`/`min-width`/ellipsis truncation still apply. */
 }
 
 /* height: 100% doesn't work here — PageContainer's own container box is
@@ -2076,27 +2533,46 @@
    .mobileBoardContent fills what's left (flex: 1 1 auto; min-height: 0).
    overflow: hidden keeps the outer page from also scrolling — only the
    carousel's own slide bodies scroll, matching the "one list per screen"
-   carousel model instead of a tall scrolling page. Also subtracts
-   PageContainer's own top padding (--sv-space-4, "md" — boards/[boardId]/
-   page.tsx's <PageContainer maxWidth="full">, unchanged from web): this div
-   renders 16px below the header, not flush against it, so without
-   accounting for that offset too the wrap overshot 16px past the fixed
-   footer's own top edge — caught live via getBoundingClientRect (wrap.bottom
-   799 vs. footer.top 783), not visually obvious in a screenshot. */
+   carousel model instead of a tall scrolling page.
+
+   No `--sv-space-4` subtraction anymore — `page.tsx`'s `PageContainer` is
+   now `padding="none"` (see that prop's own comment), so this div starts
+   flush at the primary header's own bottom edge with no padding pushing it
+   down, and needs to fill exactly down to the fixed footer's own top edge
+   with no slack to compensate for either. A prior version of this comment
+   documented two separate subtractions for PageContainer's old top/bottom
+   padding — both gone along with that padding; the bottom breathing room
+   ("+ Add a card" sitting flush against the fixed mobile nav bar with no
+   gap otherwise) now comes from `.mobileBoardContent`'s own
+   `padding-bottom` instead of this element's height shrinking to leave
+   room inside an ancestor's padding box. */
 .mobileBoardWrap {
   height: calc(
-    100dvh - var(--sv-shell-header-height, 69px) - var(--sv-shell-footer-height, 61px) - var(--sv-space-4)
+    100dvh - var(--sv-shell-header-height, 69px) - var(--sv-shell-footer-height, 61px)
   );
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
+/* Own gutter, matching what `PageContainer`'s old `padding="md"` used to
+   contribute at mobile width (16px) — now applied directly here instead,
+   since `page.tsx`'s `PageContainer` is `padding="none"` (see that prop's
+   own comment) and this plugin's mobile board header deliberately wants
+   zero inset (flush, see `.mobileBoardOverlayHeader`'s own comment) while
+   its content (this element's children: `EmptyBoard` or
+   `MobileBoardView`) still wants one. No top padding — content starts
+   flush right after the header, matching the old net position exactly
+   (PageContainer's old top padding was already fully cancelled by
+   `.mobileBoardOverlayHeader`'s own former negative margin before this
+   refactor, so removing both sides of that cancellation nets the same
+   zero-gap result). */
 .mobileBoardContent {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding: 0 var(--sv-space-4) var(--sv-space-4);
 }
 
 .mobileCarouselWrap {
@@ -2109,7 +2585,7 @@
   align-items: center;
   gap: var(--sv-space-2);
   min-height: var(--sv-space-8);
-  padding: var(--sv-space-2) var(--sv-space-1);
+  padding: var(--sv-space-2);
 }
 
 .mobileListName {
@@ -2126,11 +2602,67 @@
   color: inherit;
 }
 
+/* Reserves clearance at the bottom of the slide's scrollable region for the
+   carousel's own absolutely-positioned dots indicator
+   (SwipableMobileCarousel.module.css's `.indicatorSlot`: `bottom:
+   var(--sv-space-3)`, plus each dot's own 20px touch target — see
+   SwipableMobileCarouselDots.module.css's `.dot`, not tokenized there
+   either). Without this, `.mobileListBody` below's `max-height: 100%`
+   would resolve against this element's *full* height and the list box
+   would render underneath the dots instead of ending before them
+   (developer-reported: "Card Container should end before slide control
+   starts"). The extra `--sv-space-2` is breathing room beyond the dots'
+   own footprint, not part of it. */
+.mobileListSlideScroll {
+  padding-bottom: calc(var(--sv-space-3) + 20px + var(--sv-space-2));
+}
+
+/* K.15 mobile — the actual "list box," now wrapping just the cards +
+   QuickAddCard rather than the whole scrollable slide body (a prior pass's
+   approach). Mirrors `.list` (above) exactly: shrink-wraps to its own
+   content, capped by `max-height` rather than an explicit `height` —
+   `.mobileListCards`' own `overflow-y: auto` + `min-height: 0` (below) is
+   what lets it shrink below its own content size once this box hits that
+   cap, exactly like `.listCards` does inside `.list` (developer-reported:
+   a short 4-card list was still rendering as a tall, mostly-empty grey box
+   reaching almost to the dots, because this box previously *was* the
+   scrollable slide body itself and always filled it regardless of card
+   count).
+   `max-height: 100%` resolves against `.mobileListSlideScroll`'s own
+   content-box height above (its `padding-bottom` already reserves the dots'
+   clearance) — a flex item's used size counts as "definite" for its own
+   children's percentage resolution per the Flexbox spec, so this doesn't
+   need a measured pixel constant the way `.list`'s own `calc(100vh -
+   134px)` does; confirmed live rather than assumed from the spec alone.
+   This box's own overflow is never `auto` — only `.mobileListCards`
+   scrolls, so there's exactly one scroll container active at a time here,
+   not a nested pair fighting `SwipableMobileCarouselSlideBody`'s own
+   `overflow-y: auto` one level up (which in practice never triggers, since
+   this box is always capped to fit inside it).
+   `.body`'s own `background-color: var(--kanban-board-color, transparent)`
+   (this file's top) paints the board's own custom Trello-style canvas
+   color behind everything; on desktop that's only ever visible in the gaps
+   *around* each opaque `.list` box, never behind the cards themselves —
+   this box plays that same role on mobile now that it no longer fills the
+   whole slide, so the canvas shows through the reclaimed space below a
+   short list instead of a wall of sunken grey. */
+.mobileListBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+  background: var(--sv-color-surface-sunken);
+  border-radius: var(--sv-radius-lg);
+  padding: var(--sv-space-3);
+  box-shadow: var(--sv-shadow-card);
+  max-height: 100%;
+}
+
 .mobileListCards {
   display: flex;
   flex-direction: column;
   gap: var(--sv-space-2);
-  padding: 0 var(--sv-space-1) var(--sv-space-2);
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .mobileAddListSlide {
