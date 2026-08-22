@@ -161,14 +161,21 @@ function ProjectSection({
       aria-label={project.name}
     >
       <div className={styles.projectHeader}>
-        <div className={styles.projectTitleRow}>
-          <Typography variant="h3" as="h2">
-            {project.name}
-          </Typography>
-          <Typography variant="caption">
-            {countLabel}
-            {isOwner ? '' : ' · shared with you'}
-          </Typography>
+        <div className={styles.projectTitleColumn}>
+          <div className={styles.projectTitleRow}>
+            <Typography variant="h3" as="h2">
+              {project.name}
+            </Typography>
+            <Typography variant="caption">
+              {countLabel}
+              {isOwner ? '' : ' · shared with you'}
+            </Typography>
+          </div>
+          {project.description && (
+            <Typography variant="caption" className={styles.projectDescription}>
+              {project.description}
+            </Typography>
+          )}
         </div>
         <Button
           variant="ghost"
