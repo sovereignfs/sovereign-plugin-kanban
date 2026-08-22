@@ -14,7 +14,7 @@
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
-import { sdk, type DirectoryUser } from '@sovereignfs/sdk';
+import { sdk, type DirectoryUser, type NotificationListResult } from '@sovereignfs/sdk';
 import type { KanbanTx } from './_db/client';
 import {
   needsRenormalize,
@@ -1317,6 +1317,51 @@ export async function markInboxSeen(): Promise<void> {
     .values({ userId: actor.userId, tenantId: actor.tenantId, lastSeenAt: now })
     .onConflictDoUpdate({ target: schema.inboxState.userId, set: { lastSeenAt: now } });
   refresh();
+}
+
+// ---------------------------------------------------------------------------
+// Platform notifications (mobile header bell)
+//
+// The real Notification Center — the same cross-plugin data the platform's
+// own bell shows — read/managed via `@sovereignfs/sdk`'s new
+// `notifications.list/markRead/markAllRead/dismiss/dismissAll` surface, not
+// a Kanban-scoped substitute. `shell: minimal` gives this plugin no platform
+// chrome to render a real bell into and no way to import the platform's own
+// `NotificationBell` component (not part of `@sovereignfs/ui`'s published
+// surface), so `KanbanMobileHeader` renders its own trigger+panel
+// (`KanbanNotificationBell.tsx`) and calls these actions instead of
+// fetching a platform-internal REST endpoint directly. Every SDK call below
+// is already self-scoped to the calling session's own user — there is no
+// user-id parameter to pass — `requireUser()` here is defense-in-depth
+// (every action in this file starts with it), not what makes these safe.
+
+export async function listPlatformNotifications(): Promise<NotificationListResult> {
+  await requireUser();
+  return sdk.notifications.list();
+}
+
+export async function markPlatformNotificationRead(id: string): Promise<ActionResult> {
+  await requireUser();
+  await sdk.notifications.markRead(id);
+  return ok('Marked read.');
+}
+
+export async function markAllPlatformNotificationsRead(): Promise<ActionResult> {
+  await requireUser();
+  await sdk.notifications.markAllRead();
+  return ok('Marked all read.');
+}
+
+export async function dismissPlatformNotification(id: string): Promise<ActionResult> {
+  await requireUser();
+  await sdk.notifications.dismiss(id);
+  return ok('Dismissed.');
+}
+
+export async function dismissAllPlatformNotifications(): Promise<ActionResult> {
+  await requireUser();
+  await sdk.notifications.dismissAll();
+  return ok('Cleared.');
 }
 
 // ---------------------------------------------------------------------------

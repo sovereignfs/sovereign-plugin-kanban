@@ -10,8 +10,8 @@ import { NewProjectDialog } from './HomeDialogs';
 
 /** Plugin-local secondary nav (same precedent as Console's section nav). */
 const NAV = [
-  { href: '/kanban', label: 'Boards', icon: 'grid-2x2' as const },
-  { href: '/kanban/inbox', label: 'Inbox', icon: 'bell' as const },
+  { href: '/kanban', label: 'Boards', icon: 'layout-dashboard' as const },
+  { href: '/kanban/inbox', label: 'Inbox', icon: 'inbox' as const },
 ];
 
 /**

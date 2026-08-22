@@ -8,10 +8,324 @@
 ## Status
 
 ✅ Phase 1 complete — K.1–K.16 shipped. 🚧 Phase 2 in progress — K.17–K.19
-shipped, manifest at `0.21.0`; K.20 partially shipped within the same
+shipped, manifest at `0.24.0`; K.20 partially shipped within an earlier
 version (see its own entry below and the ⬜/✅ breakdown in K.20's own
 task section) — full K.20 completion is still pending, not yet a version
 bump of its own.
+
+**Mobile header polish + real Notification Center (0.23.0 → 0.24.0),
+developer-requested, handed off to a fresh agent at this point — read this
+entry in full before continuing.** Follow-on work to the "Mobile header"
+entry directly below, across several rounds of live-tested developer
+feedback. Summary of what changed and why, newest decision first:
+
+- **Icons**: "Boards" nav icon (web sidebar `KanbanSidebar.tsx` + mobile
+  footer left icon) switched `grid-2x2` → `layout-dashboard`. "Inbox"
+  switched `bell` → `inbox` in all four places it appeared (sidebar nav,
+  mobile footer right icon, `InboxFeedList`'s empty-state icon) — deliberate
+  and unrelated to the header's own bell, which is a genuinely different
+  concept (see below). Both new icons added to `scripts/icon-list.ts` and
+  regenerated (`pnpm generate:icons`); each regen incidentally touched
+  `calendar.tsx`/`carrot.tsx` from an unrelated Lucide version drift —
+  reverted both times to keep the diff scoped, same as the `copy` icon
+  addition earlier in this session.
+
+- **The mobile header's bell was rebuilt entirely**, triggered by direct
+  developer feedback with a side-by-side screenshot: "It has not and
+  notification panel shows kanban notifications instead of platform
+  notification which is not what I expected." Verified myself before
+  touching code — the earlier `KanbanNotificationBell` (see the "Mobile
+  header" entry below) already called the real, unfiltered
+  `/api/account/notifications` endpoint, so it was never actually
+  Kanban-scoped; the "looks Kanban-only" impression was a dev-data
+  artifact — every notification row in this dev environment happened to be
+  Kanban-sourced (`select source, count(*) from notifications group by
+  source` → 100% `fs.sovereign.kanban`/`io.openfs.kanban`/`unknown`, zero
+  rows from any other plugin). Confirmed by directly reviewing the real
+  platform header (`runtime/app/(platform)/layout.tsx`) and the one
+  `shell: default` mobile-header POC in the repo
+  (`example-plugins/example-mobile-poc`) again from scratch: the POC's own
+  bell is a **static, non-functional placeholder** ("No notifications —
+  this POC has no data layer to generate any"), not a working example to
+  copy — the real, sanctioned pattern for a `shell: minimal` plugin reading
+  real platform data turned out to be this plugin's own prior attempt,
+  just needing the actual data-access path corrected.
+
+- **The real fix, per explicit developer direction ("for real notifications
+  we need to extend sdk I believe"): extended `@sovereignfs/sdk` itself**
+  rather than having the plugin fetch a platform-internal REST route by
+  URL. New `sdk.notifications.list()/markRead()/markAllRead()/dismiss()/
+  dismissAll()` (packages/sdk `1.44.0` → `1.45.0`, additive/non-breaking),
+  backed by a new `runtime/src/notification-permissions.ts`
+  (`requireNotificationsPluginContext`, mirroring
+  `requireJobsPluginContext`/`requireCryptoPluginContext`'s exact
+  established pattern) gating all five methods on the plugin's already-
+  declared `notifications:send` permission — deliberately reused rather
+  than adding a new `notifications:read` permission, since every real
+  caller needs both send and read-your-own-inbox together. `userId` for
+  these methods is always resolved server-side from the session's own
+  `x-sovereign-user-id` header, never accepted as a plugin-supplied
+  parameter — a plugin can only ever read/manage its own signed-in user's
+  notifications, structurally, not by convention. New `@sovereignfs/db`
+  function `dismissAllNotifications` (`4.6.0` → `4.7.0`) filled a real gap:
+  no bulk-dismiss existed at the DB layer at all before this (the real
+  platform bell's own "Clear all" does N individual `dismissNotification`
+  calls in a loop — this SDK method is a genuine improvement, not just a
+  port). `runtime` bumped `0.89.0` → `0.90.0`; new row added to
+  `docs/upgrade.md`'s Runtime version map. `docs/plugin-development.md`'s
+  notifications section documents all five new methods with a usage
+  example. New Kanban server actions
+  (`listPlatformNotifications`/`markPlatformNotificationRead`/
+  `markAllPlatformNotificationsRead`/`dismissPlatformNotification`/
+  `dismissAllPlatformNotifications` in `actions.ts`, each starting with
+  `requireUser()` per this plugin's own convention) are what
+  `KanbanNotificationBell.tsx` actually calls — SSE
+  (`/api/account/notifications/stream`) is the one piece still called
+  directly by URL, not through the SDK, since a persistent server-sent-
+  events connection isn't naturally modeled as a request/response SDK
+  call; documented as a deliberate scope line in both the component's own
+  doc comment and the new docs section.
+
+- **A real bug found live, not by any check that runs in isolation**: the
+  bell's trigger `onClick` originally called `setOpen((o) => { if (!o) void
+  fetchNotifications(...); return !o; })` — nesting the (now real) server-
+  action call inside a functional state-updater callback. This throws
+  "Cannot update a component (Router) while rendering a different
+  component" on every single mount, not just on click (the mount-time
+  `useEffect` hits the same `fetchNotifications` path). Root-caused by
+  isolating it in a **fresh browser tab with no HMR history** — the same
+  symptom persisted across a full dev-server restart in the *original* tab,
+  which briefly looked like the actual bug, before a brand-new tab showed
+  zero errors on the exact same code, revealing the original tab's
+  webpack module graph was itself stale from many rapid edits. A
+  `useTransition`/`startTransition` wrapper was also tried as a
+  hypothesis-driven fix, appeared to still fail, and was ruled out and
+  reverted the same way (tested in the fresh tab, not the stale one) —
+  the actual, verified fix is reading `open` from the closed-over variable
+  and calling the action as a plain, un-nested side effect:
+  `const willOpen = !open; setOpen(willOpen); if (willOpen) void
+  fetchNotifications(...)`. Documented in the component's own doc comment
+  at the exact call site so this isn't silently re-broken later.
+
+- **Stale legacy dev data removed**: "fs.sovereign.kanban is the correct
+  one. Remove everything related to io.openfs.kanban" — no code references
+  existed (only historical SPEC.md changelog prose about a real past
+  plugin-id migration, correctly left as history, not touched); the actual
+  ask was 4 stale `source: 'io.openfs.kanban'` rows sitting in the dev
+  `notifications` table from before that rename, deleted directly.
+
+- **Follow-up visual/data fixes**, each from a specific developer note:
+  header `title="Kanban"` → `title={instanceName}` (the real platform
+  header always shows the instance brand, never the active plugin's own
+  name — `runtime/app/(platform)/layout.tsx`'s own doc comment says so
+  explicitly); bell icon `size="md"` (20px) → `size="lg"` (24px, matching
+  the real bell's hardcoded `width="24" height="24"` inline SVG exactly,
+  not a DS token that happened to be close); avatar `avatarSize="sm"`
+  (24px) → `"md"` (32px, matching the *desktop* header's own already-
+  established avatar size — same component, same size, same styles as the
+  other place in this plugin it's already used, not a third new size);
+  notification popup `Popover` given an explicit `panelStyle={{ maxHeight:
+  480 }}` to match the real panel's fixed cap (`Popover`'s own dynamic
+  viewport-fit `maxHeight` could otherwise produce a taller or shorter
+  panel depending on where the trigger sits on screen).
+
+- **Full visual parity pass on the popup itself**, per "Need to match
+  styles for that too" against another side-by-side screenshot: added the
+  panel's close (✕) button (was missing entirely — only outside-
+  click/Escape closed it before), the bold "Notifications" title treatment
+  (was an uppercase small label, now `font-size: sm`/`weight: 600`/`color:
+  text-primary`, token-for-token off the real `.headerTitle`), and — the
+  category icon/color treatment per notification item (green circle for
+  user/invite/join, amber for security/warning, neutral gray otherwise,
+  mapped onto this repo's own curated icon set: `user-round-plus`/
+  `alert-triangle`/`package` in place of the real component's hand-drawn
+  inline SVGs, since exact glyphs like `user-plus`/`layers` aren't in the
+  curated list and the set is deliberately kept small). Every size/spacing
+  value in the new `.notification*` CSS block was copied token-for-token
+  from the real `runtime/app/(platform)/_components/
+  NotificationBell.module.css` (32px category-icon circle, 7px unread dot,
+  20px dismiss button, same padding scale), not eyeballed. **Last fix in
+  this round**: the trigger button had no "panel is open" visual state at
+  all — the real `.trigger`/`.triggerActive` pair shows a muted icon color
+  at rest, full-contrast on hover, and a *persistent* `--sv-color-border`
+  background specifically while the panel is open (not just on hover).
+  Added the missing `.mobileHeaderIconButtonActive` class, applied via
+  `open ? styles.mobileHeaderIconButtonActive : ''`, and switched the base
+  `color` from always-primary to muted-until-hover-or-open — this was a
+  genuine gap, not a screenshot-compression illusion (the avatar's own
+  apparent "missing border" in the same comparison screenshot was checked
+  computationally — `getComputedStyle` showed `border: 1px solid rgb(24,
+  24, 27)`, an exact match to the real `.avatar`'s own token value — and
+  concluded to be a real gap nowhere, just image compression).
+
+Verified live end-to-end after every round above, always in a fresh browser
+tab (not the long-lived one accumulating HMR staleness) at both 375×812
+mobile and desktop width: real dev notification data round-tripped through
+the new SDK methods with actual DB writes confirmed directly against the
+live sqld instance for mark-read/mark-all-read/dismiss/dismiss-all (not just
+optimistic client state); green/amber/neutral category icons confirmed
+against seeded rows of each kind; badge count, close button, and the new
+trigger active-state background all confirmed by direct interaction, not
+just visual inspection. Full check suite (typecheck/lint/format/vitest
+across `packages/sdk`, `packages/db`, `runtime`, and the plugin itself, plus
+`pnpm design:tokens:check`) passing at every step. Desktop header
+unaffected throughout (confirmed on every round, not assumed) — none of
+this touched `KanbanHeader.tsx` beyond the earlier `KanbanAccountMenu`
+extraction already covered in the "Mobile header" entry below.
+
+**Not committed or pushed** — the developer's standing instruction for this
+whole session. A fresh agent picking this up should run
+`git status`/`git diff` first to see the full accumulated working-tree
+diff before doing anything else, and should not assume any of the above was
+captured in a commit.
+
+**Mobile header (0.22.0 → 0.23.0), developer-requested:** "let's start
+working on mobile View, first we need a custom header for mobile view
+identical to Platform Header. Use the same design system components and
+data points." Mobile previously had only a footer (K.12) — no header at
+all, so a page's brand/notifications/account identity was reachable on
+mobile exclusively through the footer's Apps drawer. Clarified with the
+developer up front (`shell: minimal` means there's no real horizontal
+"Platform Header" to literally compose into — the platform's own desktop
+chrome is a sidebar, and its own *mobile* header lives in
+`runtime/app/(platform)/layout.tsx`, unreachable from this plugin): the new
+`KanbanMobileHeader` mirrors that real platform mobile header's shape 1:1
+— same `@sovereignfs/ui` `MobileHeader` component, same three-slot
+composition (brand/logo, bell, avatar menu) — rather than mirroring
+`KanbanHeader`'s own desktop content (which additionally has an Apps
+switcher next to the avatar; the developer confirmed the mobile footer's
+existing center "Apps" button already covers that, so the header doesn't
+duplicate it).
+
+`bell` points at this plugin's own Inbox (`/kanban/inbox`) — the closest
+equivalent to the real platform's cross-plugin notification feed available
+to a `shell: minimal` plugin — reusing the exact same `hasUnseenInboxActivity`
+unseen-dot data point the mobile *footer's* own Inbox icon already used, not
+a second "unseen" concept. `avatarMenu` is `KanbanAccountMenu`, a new
+component extracted from `KanbanHeader.tsx`'s previously-inline account
+Popover/Avatar/Icon dropdown (same DS primitives, same menu content — user
+header, Account/Preferences links, destructive Sign out) so the desktop and
+mobile headers share one implementation instead of two independently
+drifting copies; `KanbanHeader.tsx` itself now just renders
+`<KanbanAccountMenu user={user} avatarSize="md" />` where the inline Popover
+used to be, with no behavior change (verified live, both surfaces, after the
+extraction).
+
+**A real, if minor, footer gap found and fixed alongside this** (developer
+flagged it directly, comparing to the real platform's own `MobileNav`):
+`KanbanMobileFooter`'s center "Apps" button never passed a `launcherIcon` to
+`MobileFooter`, so it always fell back to the generic default icon instead
+of the real Launcher plugin's own icon the way the platform's own
+`MobileNav` does (`launcherIconUrl ? <img/> : undefined`). Root cause:
+`sdk.plugins.list()` has no chrome-plugin concept (unlike the platform
+shell's own `runtime/src`-only `selectSidebarPlugins`/`CHROME_PLUGIN_IDS`,
+which plugins can't reach), so the Launcher plugin was already present in
+`apps` as an ordinary entry — just never pulled out and wired to
+`launcherIcon`, and left to show up as a redundant "Launcher" tile
+mixed into the regular grid. Fixed by extracting it from `apps` and wiring
+its `iconUrl` to `launcherIcon`; in its place, the Apps drawer grid now gets
+a dedicated "Home" tile (`house` icon) prepended first, linking to
+`/launcher` — the platform's own convention puts "Home" in the footer's
+`leftIcons` instead of the drawer, but that slot is already "Boards" here
+(a deliberate K.12 decision with no other use for a footer-level Home
+affordance), so the drawer's first tile is this plugin's equivalent,
+per explicit developer direction.
+
+Verified live end-to-end in both the in-app browser preview (375×812
+mobile viewport) and at desktop width (regression-checking the
+`KanbanAccountMenu` extraction didn't change `KanbanHeader`'s existing
+behavior): mobile header renders brand badge/"Kanban" title/bell/avatar
+correctly on every route (Home, a board, Inbox) with no double-header or
+layout shift; bell navigates to `/kanban/inbox`; avatar opens the same
+account menu content as desktop (name, email, Account/Preferences/Sign
+out); footer's center button now shows the real Launcher SVG icon
+(confirmed via the rendered `<img src="/plugin-icons/fs.sovereign.launcher.svg">`,
+not just visually); the Apps drawer's first tile is "Home" and clicking it
+navigates to `/launcher`, with no duplicate "Launcher" entry later in the
+grid; desktop's own header and account dropdown are pixel-for-pixel
+unchanged. No server errors in dev logs across the whole session. One
+methodology note from this verification, not a product bug: `useIsMobile`
+correctly keeps the desktop header's own (CSS-hidden) Account button in the
+DOM at the same time the mobile header's own Account button is visible —
+an early verification pass that queried `document.querySelector('button
+[aria-label="Account"]')` (grabbing the first, hidden match) briefly looked
+like a broken popover before switching to the visible one confirmed it was
+a test-script mistake, not an app defect.
+
+**Inbox redesign (0.21.0 → 0.22.0), developer-requested:** "Currently, inbox
+shows all the activity logs and we actually need inbox for to see what are
+the assigned cards, and mentions, replies to comments etc. We already have a
+section in Card Details for Card related activities." K.11's original Inbox
+was a per-board activity-log firehose (every board mutation across every
+board the viewer belongs to) — redundant with the card detail panel's own
+activity section (K.8) and not personalized at all. Redesigned to show only
+"cards assigned to you" and "replies to your comments" — two scoped
+decisions made with the developer up front: re-derive both straight from
+kanban's own source-of-truth tables rather than mirroring the platform
+Notification Center (`sdk.notifications.send`, already wired for these same
+two events since K.11's original ship), so the Inbox stays an independently
+queryable view instead of a read-model of another system's write path; and
+explicitly defer @-mentions this round — there is no @-mention parsing
+anywhere in this plugin, so a `'mention'` item kind would need new
+infrastructure (parsing, storage, rendering) with no design decided yet, out
+of scope for a query redesign.
+
+`getInboxFeed`/`hasUnseenInboxActivity` (`_lib/queries.ts`) no longer touch
+`kanban_activity` at all — that log's `payload` is opaque JSON `text` with
+no native query support, so filtering "is this about me" through it would
+mean fetching every board's activity and parsing JSON in application code,
+the same "everything, unfiltered" shape being replaced. Both queries now
+read directly from `kanban_card_assignees` (`userId` = viewer, `assignedBy`
+≠ viewer — mirrors `assignMember`'s own no-self-notification dedup) and
+`kanban_comments` (a two-step "find my own comment ids, then find replies to
+them" rather than a self-join, so each step can use its own index instead of
+scanning the whole comments table). New schema indices in both dialects,
+`kanban_comments_author_idx`/`kanban_comments_parent_idx`
+(`migrations/sqlite/0003_inbox_comment_indexes.sql`,
+`migrations/postgres/0004_inbox_comment_indexes.sql`) — the comments table
+previously had no index beyond `cardId`. `InboxItem` dropped its old
+generic `type`/`payload`/`lists`/`labels` shape (no longer routed through
+`describeActivity()`, which stays exactly as it was for the card detail
+panel's own activity log) for a narrow `kind: 'assigned' | 'reply'`
+discriminant with dedicated copy in `InboxFeedList.tsx`
+(`describeInboxItem`) — "**Actor** assigned you to "Card"" /
+"**Actor** replied to your comment on "Card"". `README.md`'s feature bullet
+and permissions table both overstated existing scope (claimed mentions and
+generic due-date-change delivery that were never actually implemented,
+per the developer's own correction) — fixed to describe what actually
+ships.
+
+Test suite: the two K.11 tests that asserted the old board-activity-log
+semantics (`getInboxFeed only returns activity from boards the actor is a
+member of`, `hasUnseenInboxActivity ignores the actor's own activity but
+reacts to others'`) no longer matched the redesigned behavior and were
+replaced with three tests covering the new semantics directly —
+assigned-to-me excludes self-assignment and other people's assignments;
+replies-to-my-comments excludes top-level comments, replies to someone
+else's comment, and replying to your own comment; the unseen badge ignores
+generic board activity (e.g. list creation) entirely now and reacts only to
+being assigned or getting a reply, clearing after `markInboxSeen` for
+either. All 126 plugin tests pass, alongside a full
+typecheck/lint/format/design-tokens run.
+
+Verified live end-to-end in dev against the real database, not just the
+test suite: confirmed the pre-existing "assigned to me" seed data
+(`Dev Owner` → `Dev Admin` on "Reach out to partner brands") rendered with
+the new copy and grouped correctly under its actual day, and that its deep
+link opened the exact right card. The reply case has no seed data and a
+live two-account round trip wasn't practical in this session, so it was
+verified the same way K.9/K.11's own prior live-verification entries
+describe doing when a second real login isn't available: posted a real
+top-level comment through the UI as the logged-in user (a real
+`addComment` call, not a stub), then inserted one reply row directly into
+the live dev sqld namespace (`plugin_fs_sovereign_kanban`, via
+`x-namespace`-header `@libsql/client` calls — the same routing
+`packages/db/src/sqld.ts` uses) authored by a different real board member
+id already present from seed data, then reloaded `/kanban/inbox` and
+confirmed "**Dev Owner** replied to your comment on "Reach out to partner
+brands"" rendered correctly, grouped under "Today," with no server errors
+in the dev logs. Test data removed afterward and the feed reverted to
+showing only the original assignment.
 
 **Comprehensive board color picker (0.20.8 → 0.21.0), developer-requested:
 "for color pallet we have for boards is limited and curated list... show a
