@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useOptimistic, useState, useTransition } from 'react';
 import type { DirectoryUser } from '@sovereignfs/sdk';
 import { Avatar, Button, Dialog, Icon, Input, Typography, useToast } from '@sovereignfs/ui';
 import { addBoardMember, getBoardMemberCandidates, removeBoardMember } from '../actions';
@@ -14,14 +14,61 @@ import styles from '../kanban.module.css';
 // (LicenseGenerator.tsx's `copyPubKey`/`copyToken`).
 const COPIED_LABEL_MS = 2000;
 
+type Member = BoardData['members'][number];
+type MemberAction = { type: 'remove'; userId: string } | { type: 'add'; member: Member };
+type CandidateAction = { type: 'add'; user: DirectoryUser } | { type: 'remove'; userId: string };
+
+function applyMemberAction(state: readonly Member[], action: MemberAction): Member[] {
+  return action.type === 'remove'
+    ? state.filter((m) => m.userId !== action.userId)
+    : [...state, action.member];
+}
+
+function applyCandidateAction(
+  state: readonly DirectoryUser[] | null,
+  action: CandidateAction,
+): DirectoryUser[] | null {
+  if (!state) return state;
+  if (action.type === 'remove') return state.filter((u) => u.id !== action.userId);
+  return state.some((u) => u.id === action.user.id) ? [...state] : [...state, action.user];
+}
+
+function toCandidate(member: Member): DirectoryUser {
+  return { id: member.userId, email: member.email ?? '', name: member.name, image: member.image };
+}
+
+function toMember(user: DirectoryUser): Member {
+  return { userId: user.id, name: user.name, email: user.email, image: user.image, role: 'member' };
+}
+
 /**
  * Board header CTA (K.9) — every member can open this to see who's on the
  * board; the add-picker and each row's "Remove" only render for the owner
- * ("owner-only management" per SPEC, not owner-only visibility). Reads
- * `board.members` straight from props on every render rather than copying
- * it into local state — `addBoardMember`/`removeBoardMember` both call
- * `refresh()`, and a local copy would go stale the same way K.8's
- * `CardActivity` did before that fix.
+ * ("owner-only management" per SPEC, not owner-only visibility).
+ *
+ * Both the member list and the "Add a person" candidate list are driven by
+ * their own `useOptimistic`, not a plain `useState` for the latter — that
+ * distinction mattered in practice. First attempt paired `useOptimistic`
+ * (for members) with a plain `setCandidates` call, both invoked
+ * synchronously back-to-back inside the same `startTransition`, expecting
+ * them to commit together. Live instrumentation (temporary `console.log`
+ * timestamps at every step, not just DOM/height sampling — the height
+ * sampling alone had already shown *something* was still two-stage, but
+ * not *why*) proved they don't: `useOptimistic`'s dispatch gets special
+ * treatment to render immediately even inside a transition, but a plain
+ * `useState` setter called in that same transition is ordinary low-priority
+ * transition work, and React deferred its flush until the transition's own
+ * async work (the server action's round-trip) settled — 200-500ms later,
+ * confirmed by the timestamps. The member row disappeared immediately; the
+ * candidate row appeared only once the mutation resolved, same two-stage
+ * dialog-height jump as before, just with a different root cause than the
+ * first fix addressed. Routing `candidates` through its own `useOptimistic`
+ * (`confirmedCandidates` as the durable base, updated on success so the
+ * optimistic view doesn't revert once the transition settles) gives it the
+ * same immediate-apply treatment `optimisticMembers` already has, so both
+ * update in the same commit as the click, for real this time — verified
+ * the same way the bug was found: per-step timestamps, not just a visual
+ * check.
  */
 export function BoardShareDialog({
   board,
@@ -34,9 +81,66 @@ export function BoardShareDialog({
 }) {
   const toast = useToast();
   const isOwner = board.role === 'owner';
+  const [confirmedCandidates, setConfirmedCandidates] = useState<DirectoryUser[] | null>(null);
+  const [optimisticMembers, dispatchMembers] = useOptimistic(board.members, applyMemberAction);
+  const [candidates, dispatchCandidates] = useOptimistic(confirmedCandidates, applyCandidateAction);
+
+  useEffect(() => {
+    let cancelled = false;
+    getBoardMemberCandidates({ boardId: board.id })
+      .then((users) => {
+        if (!cancelled) setConfirmedCandidates(users);
+      })
+      .catch(() => {
+        if (!cancelled) setConfirmedCandidates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [board.id]);
 
   function onError(message: string): void {
     toast.show({ title: 'Couldn’t update members', message, category: 'error' });
+  }
+
+  // One transition per direction rather than per row/candidate — `useOptimistic`
+  // only needs *some* transition active when its dispatch is called, and
+  // sharing keeps `pending` meaningful (disables the whole list while any
+  // remove is in flight) without a per-id Set.
+  const [removePending, startRemoveTransition] = useTransition();
+  const [addPending, startAddTransition] = useTransition();
+
+  function removeMember(member: Member): void {
+    startRemoveTransition(async () => {
+      dispatchMembers({ type: 'remove', userId: member.userId });
+      dispatchCandidates({ type: 'add', user: toCandidate(member) });
+      const result = await removeBoardMember({ boardId: board.id, userId: member.userId });
+      if (result.ok) {
+        // Commits the optimistic candidates change into the durable base —
+        // `optimisticMembers` doesn't need this, its own base (board.members)
+        // already gets updated via the mutation's refresh(). Without this,
+        // `candidates` would revert to its pre-removal value the moment this
+        // transition settles, since confirmedCandidates itself never changed.
+        setConfirmedCandidates((prev) =>
+          prev && !prev.some((u) => u.id === member.userId) ? [...prev, toCandidate(member)] : prev,
+        );
+      } else {
+        onError(result.error);
+      }
+    });
+  }
+
+  function addMember(user: DirectoryUser): void {
+    startAddTransition(async () => {
+      dispatchCandidates({ type: 'remove', userId: user.id });
+      dispatchMembers({ type: 'add', member: toMember(user) });
+      const result = await addBoardMember({ boardId: board.id, userId: user.id });
+      if (result.ok) {
+        setConfirmedCandidates((prev) => (prev ? prev.filter((u) => u.id !== user.id) : prev));
+      } else {
+        onError(result.error);
+      }
+    });
   }
 
   return (
@@ -47,18 +151,18 @@ export function BoardShareDialog({
         </Typography>
         <BoardUrlRow boardId={board.id} />
         <ul className={styles.memberList}>
-          {board.members.map((member) => (
+          {optimisticMembers.map((member) => (
             <MemberRow
               key={member.userId}
-              boardId={board.id}
               member={member}
               currentUser={currentUser}
               canManage={isOwner}
-              onError={onError}
+              pending={removePending}
+              onRemove={() => removeMember(member)}
             />
           ))}
         </ul>
-        {isOwner && <MemberPicker boardId={board.id} onError={onError} />}
+        {isOwner && <MemberPicker candidates={candidates} pending={addPending} onAdd={addMember} />}
       </div>
     </Dialog>
   );
@@ -121,19 +225,18 @@ function BoardUrlRow({ boardId }: { boardId: string }) {
 }
 
 function MemberRow({
-  boardId,
   member,
   currentUser,
   canManage,
-  onError,
+  pending,
+  onRemove,
 }: {
-  boardId: string;
-  member: BoardData['members'][number];
+  member: Member;
   currentUser: CurrentUser;
   canManage: boolean;
-  onError: (message: string) => void;
+  pending: boolean;
+  onRemove: () => void;
 }) {
-  const [pending, startTransition] = useTransition();
   // A one-member lookup array — `member` already carries name/email, so
   // `displayName` resolves it without needing the full board member list.
   const name = displayName(member.userId, currentUser, [member]);
@@ -152,17 +255,7 @@ function MemberRow({
         </Typography>
       ) : (
         canManage && (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={pending}
-            onClick={() => {
-              startTransition(async () => {
-                const result = await removeBoardMember({ boardId, userId: member.userId });
-                if (!result.ok) onError(result.error);
-              });
-            }}
-          >
+          <Button variant="ghost" size="sm" disabled={pending} onClick={onRemove}>
             Remove
           </Button>
         )
@@ -172,45 +265,27 @@ function MemberRow({
 }
 
 /**
- * K.20 — candidates are the board's project members not yet on the board,
- * fetched once (not per keystroke) via `getBoardMemberCandidates`; the text
- * field below filters that already-fetched list client-side, rather than
+ * K.20 — candidates are the board's project members not yet on the board;
+ * the text field below filters that list client-side, rather than
  * live-querying the directory the way the project-level picker
- * (`ManageProjectDialog`'s own `MemberPicker`) still does — a board can
- * only ever be shared with someone the project already trusts, so there's
- * no "search the whole directory" case here at all.
+ * (`ManageProjectDialog`'s own `MemberPicker`) still does — a board can only
+ * ever be shared with someone the project already trusts, so there's no
+ * "search the whole directory" case here at all.
+ *
+ * Fully controlled by `BoardShareDialog` — see that component's own doc
+ * comment for why both the member list and this candidate list are driven
+ * from up there together, each through its own `useOptimistic`.
  */
-function MemberPicker({ boardId, onError }: { boardId: string; onError: (message: string) => void }) {
-  const [candidates, setCandidates] = useState<DirectoryUser[] | null>(null);
+function MemberPicker({
+  candidates,
+  pending,
+  onAdd,
+}: {
+  candidates: DirectoryUser[] | null;
+  pending: boolean;
+  onAdd: (user: DirectoryUser) => void;
+}) {
   const [query, setQuery] = useState('');
-  const [addingId, setAddingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getBoardMemberCandidates({ boardId })
-      .then((users) => {
-        if (!cancelled) setCandidates(users);
-      })
-      .catch(() => {
-        if (!cancelled) setCandidates([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [boardId]);
-
-  function add(user: DirectoryUser): void {
-    setAddingId(user.id);
-    void addBoardMember({ boardId, userId: user.id })
-      .then((result) => {
-        if (result.ok) {
-          setCandidates((prev) => (prev ? prev.filter((u) => u.id !== user.id) : prev));
-        } else {
-          onError(result.error);
-        }
-      })
-      .finally(() => setAddingId(null));
-  }
 
   if (candidates !== null && candidates.length === 0) {
     return (
@@ -252,8 +327,8 @@ function MemberPicker({ boardId, onError }: { boardId: string; onError: (message
               <button
                 type="button"
                 className={styles.memberResultRow}
-                disabled={addingId === user.id}
-                onClick={() => add(user)}
+                disabled={pending}
+                onClick={() => onAdd(user)}
               >
                 <Avatar name={user.name ?? user.email} src={user.image ?? undefined} size="sm" />
                 <div className={styles.memberInfo}>
