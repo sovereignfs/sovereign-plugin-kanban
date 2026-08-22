@@ -9,7 +9,6 @@ import {
   Input,
   Menu,
   SwipableMobileCarouselSlideBody,
-  SwipableMobileCarouselSlideFooter,
   SwipableMobileCarouselSlideHeader,
   Typography,
   useCommitOnEnterOrBlur,
@@ -96,37 +95,46 @@ export function MobileListSlide({
           menuOpen={menuOpen}
           onMenuTrigger={() => setMenuOpen((v) => !v)}
           onMenuClose={() => setMenuOpen(false)}
-          onAddCard={() => setAddingCard(true)}
           onDelete={() => setDeleteOpen(true)}
           cardCount={cards.length}
         />
       </SwipableMobileCarouselSlideHeader>
 
-      <SwipableMobileCarouselSlideBody>
-        <div className={styles.mobileListCards}>
-          {orderedCards.length === 0 && (
-            <Typography variant="caption" className={styles.descriptionPlaceholder}>
-              No cards yet
-            </Typography>
-          )}
-          <DndContext
-            id={`mobile-list-dnd-${list.id}`}
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext items={order} strategy={verticalListSortingStrategy}>
-              {orderedCards.map((card) => (
-                <MobileCardTile key={card.id} card={card} href={cardHrefFor(card.id)} />
-              ))}
-            </SortableContext>
-          </DndContext>
+      <SwipableMobileCarouselSlideBody className={styles.mobileListSlideScroll}>
+        <div className={styles.mobileListBody}>
+          <div className={styles.mobileListCards}>
+            {orderedCards.length === 0 && (
+              <Typography variant="caption" className={styles.descriptionPlaceholder}>
+                No cards yet
+              </Typography>
+            )}
+            <DndContext
+              id={`mobile-list-dnd-${list.id}`}
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext items={order} strategy={verticalListSortingStrategy}>
+                {orderedCards.map((card) => (
+                  <MobileCardTile key={card.id} card={card} href={cardHrefFor(card.id)} />
+                ))}
+              </SortableContext>
+            </DndContext>
+          </div>
+
+          {/* Right after the last card, in normal scroll flow — not
+              `SwipableMobileCarouselSlideFooter`, which pins to the bottom of
+              the *slide's* own flex column via `flex: 0 0 auto`. Matches
+              `ListColumn`'s own desktop placement exactly — `QuickAddCard`
+              as a plain sibling right after `.mobileListCards`, both inside
+              `.mobileListBody`, not in any pinned slot: mirrors desktop's
+              `.list` (ListHeader / `.listCards` / QuickAddCard, all direct
+              children of the one capped box) so the trigger stays visible
+              right under the cards rather than pinned to the whole slide's
+              own bottom edge. */}
+          <QuickAddCard listId={list.id} open={addingCard} onOpenChange={setAddingCard} />
         </div>
       </SwipableMobileCarouselSlideBody>
-
-      <SwipableMobileCarouselSlideFooter>
-        <QuickAddCard listId={list.id} open={addingCard} onOpenChange={setAddingCard} />
-      </SwipableMobileCarouselSlideFooter>
 
       {deleteOpen && (
         <DeleteListConfirm
@@ -149,7 +157,6 @@ function MobileListHeader({
   menuOpen,
   onMenuTrigger,
   onMenuClose,
-  onAddCard,
   onDelete,
   cardCount,
 }: {
@@ -160,7 +167,6 @@ function MobileListHeader({
   menuOpen: boolean;
   onMenuTrigger: () => void;
   onMenuClose: () => void;
-  onAddCard: () => void;
   onDelete: () => void;
   cardCount: number;
 }) {
@@ -200,7 +206,7 @@ function MobileListHeader({
     return (
       <div className={styles.mobileListHeaderRow}>
         <Input
-          // eslint-disable-next-line jsx-a11y/no-autofocus -- replaces the list name only from the user's own tap on it (or "Rename list" in the menu), never on mount
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- replaces the list name only from the user's own tap on it, never on mount
           autoFocus
           value={value}
           disabled={pending}
@@ -221,6 +227,16 @@ function MobileListHeader({
         </Typography>
         <Typography variant="caption">{cardCount}</Typography>
       </button>
+      {/* `rectangle-ellipsis`, not the board header's own `ellipsis-vertical`
+          — two identical kebab triggers stacked ~50px apart read as the
+          same button repeated (developer-reported). A distinct glyph keeps
+          this a menu (room to grow — more list-level actions can land here
+          later) without visually colliding with the board header's own
+          trigger above it. Add card and Rename list were dropped as items
+          here since both already have dedicated affordances (tapping the
+          title above renames it; `QuickAddCard`'s own "+ Add a card" row
+          is the real entry point for adding a card) — Delete is the only
+          one that was genuinely menu-only. */}
       <Menu
         trigger={
           <Button
@@ -229,19 +245,14 @@ function MobileListHeader({
             aria-label={`Options for ${list.name}`}
             onClick={onMenuTrigger}
           >
-            <Icon name="ellipsis-vertical" size="sm" aria-hidden={true} />
+            <Icon name="rectangle-ellipsis" size="sm" aria-hidden={true} />
           </Button>
         }
         open={menuOpen}
         onClose={onMenuClose}
         align="right"
         aria-label={`${list.name} options`}
-        items={[
-          { label: 'Add card', icon: 'plus', onSelect: onAddCard },
-          { label: 'Rename list', icon: 'pencil', onSelect: onStartRename },
-          { type: 'separator' },
-          { label: 'Delete list', icon: 'trash-2', destructive: true, onSelect: onDelete },
-        ]}
+        items={[{ label: 'Delete list', icon: 'trash-2', destructive: true, onSelect: onDelete }]}
       />
     </div>
   );

@@ -59,6 +59,13 @@ export function MobileBoardView({
     const qs = routeKey.split('?')[1] ?? '';
     const listId = new URLSearchParams(qs).get('list');
     if (!listId) return 0;
+    // The one non-list slide `pathForIndex` below can write into the URL —
+    // matched before the real-list lookup, or it fell through to the "not
+    // found" fallback below and silently bounced back to index 0. Reachable
+    // any time the "Add list" slide's own URL round-trips through a reload
+    // (found live: swipe to "Add list", refresh — landed back on the first
+    // list instead of staying put).
+    if (listId === ADD_LIST_SLIDE_KEY) return orderedLists.length;
     const idx = orderedLists.findIndex((l) => l.id === listId);
     return idx === -1 ? 0 : idx;
   }
