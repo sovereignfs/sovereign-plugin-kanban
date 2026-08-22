@@ -2596,18 +2596,18 @@
    own comment) and this plugin's mobile board header deliberately wants
    zero inset (flush, see `.mobileBoardOverlayHeader`'s own comment) while
    its content (this element's children: `EmptyBoard` or
-   `MobileBoardView`) still wants one. No top padding — content starts
-   flush right after the header, matching the old net position exactly
-   (PageContainer's old top padding was already fully cancelled by
-   `.mobileBoardOverlayHeader`'s own former negative margin before this
-   refactor, so removing both sides of that cancellation nets the same
-   zero-gap result). */
+   `MobileBoardView`) still wants one. Top padding (--sv-space-4, matching
+   the side/bottom gutter) separates the list's own card container from the
+   header row right above it — content used to start flush against the
+   header with no gap at all (developer-reported: the list box read as
+   glued to the header; a first pass at --sv-space-3 was still too tight,
+   per follow-up feedback). */
 .mobileBoardContent {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 var(--sv-space-4) var(--sv-space-4);
+  padding: var(--sv-space-4);
 }
 
 .mobileCarouselWrap {
