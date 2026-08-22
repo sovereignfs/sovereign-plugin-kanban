@@ -66,6 +66,16 @@ export default async function KanbanLayout({ children }: { children: ReactNode }
       .catch(() => 'Sovereign'),
   ]);
 
+  // Platform-role admin check, same capability (`console:access`) and same
+  // pattern (`hasCapability` against the session) the platform shell's own
+  // `AdminConsoleIcon` uses to gate its Console link — gates the "Console"
+  // tile `AppsMenu` adds to its Apps switcher below. Computed here, not in
+  // `AppsMenu` itself, because that component is a client component with no
+  // server-side session access of its own; every other piece of session data
+  // it needs already flows down the same way (see `KanbanHeader`'s `user`
+  // prop just below).
+  const isAdmin = sdk.auth.hasCapability(session, 'console:access');
+
   // Plain serializable data across the client boundary — never JSX (see
   // KanbanMobileFooter's own doc comment for why the drawer is built
   // client-side from this instead).
@@ -107,6 +117,7 @@ export default async function KanbanLayout({ children }: { children: ReactNode }
             image: session?.user.image ?? null,
           }}
           instanceName={instanceName}
+          isAdmin={isAdmin}
         />
         <KanbanMobileHeader
           user={{
