@@ -12,6 +12,8 @@ export interface MobileAppEntry {
   iconUrl?: string;
 }
 
+const LAUNCHER_PLUGIN_ID = 'fs.sovereign.launcher';
+
 /**
  * K.12 mobile shell — Boards (left), Inbox (right, with the same unseen dot
  * the desktop sidebar shows), and an "untouched" Apps launcher (center):
@@ -27,6 +29,20 @@ export interface MobileAppEntry {
  * A plain `onClick`+`router.push` (not `FooterIcon`'s `href`, a bare `<a>`)
  * preserves client-side navigation — same reasoning as the platform's own
  * `MobileNav`.
+ *
+ * `launcherIcon` (the center button's own icon) is the real Launcher
+ * plugin's icon, matching the platform's own `MobileNav`
+ * (`launcherIconUrl ? <img .../> : undefined`) — `apps` (from
+ * `sdk.plugins.list()`) includes the Launcher plugin as an ordinary entry
+ * since the SDK's plugin-discovery path has no chrome-plugin concept (unlike
+ * the platform shell's own `selectSidebarPlugins`/`CHROME_PLUGIN_IDS`,
+ * `runtime/src`-only and unreachable from here), so it's pulled out of the
+ * list here rather than showing up as a redundant "Launcher" tile in the
+ * grid below. In its place, a dedicated "Home" tile is prepended to the
+ * drawer grid — the platform's own convention puts "Home" in the footer's
+ * `leftIcons` instead, but that slot is already "Boards" here (Kanban has
+ * no other use for a footer-level Home affordance), so the drawer's first
+ * tile is this plugin's equivalent.
  */
 export function KanbanMobileFooter({
   apps,
@@ -42,6 +58,9 @@ export function KanbanMobileFooter({
 
   const isBoards = pathname === '/kanban' || pathname.startsWith('/kanban/b');
   const isInbox = pathname.startsWith('/kanban/inbox');
+
+  const launcherApp = apps.find((app) => app.id === LAUNCHER_PLUGIN_ID);
+  const drawerApps = apps.filter((app) => app.id !== LAUNCHER_PLUGIN_ID);
 
   // `useIsMobile` defaults to `false` until the client mounts and reads the
   // real viewport (SSR-safe-not-flash-free, see layout.tsx's own comment) —
@@ -62,9 +81,14 @@ export function KanbanMobileFooter({
       <MobileFooter
         onOpenApps={() => setAppsOpen(true)}
         launcherOpen={appsOpen}
+        launcherIcon={
+          launcherApp?.iconUrl ? (
+            <img src={launcherApp.iconUrl} alt="" className={styles.mobileFooterLauncherIcon} />
+          ) : undefined
+        }
         leftIcons={[
           {
-            icon: <Icon name="grid-2x2" size="md" aria-hidden />,
+            icon: <Icon name="layout-dashboard" size="md" aria-hidden />,
             label: 'Boards',
             active: isBoards,
             onClick: () => router.push('/kanban'),
@@ -74,7 +98,7 @@ export function KanbanMobileFooter({
           {
             icon: (
               <span className={styles.mobileFooterIconWrap}>
-                <Icon name="bell" size="md" aria-hidden />
+                <Icon name="inbox" size="md" aria-hidden />
                 {hasUnseenInbox && <span className={styles.mobileFooterUnseenBadge} aria-hidden />}
               </span>
             ),
@@ -89,19 +113,30 @@ export function KanbanMobileFooter({
         open={appsOpen}
         onClose={() => setAppsOpen(false)}
         aria-label="Apps"
-        items={apps.map((app) => ({
-          key: app.id,
-          label: app.name,
-          icon: app.iconUrl ? (
-            <img src={app.iconUrl} alt="" className={styles.mobileFooterAppIcon} />
-          ) : (
-            <Icon name="grid-2x2" size="lg" aria-hidden />
-          ),
-          onClick: () => {
-            setAppsOpen(false);
-            router.push(app.routePrefix);
+        items={[
+          {
+            key: 'home',
+            label: 'Home',
+            icon: <Icon name="house" size="lg" aria-hidden />,
+            onClick: () => {
+              setAppsOpen(false);
+              router.push('/launcher');
+            },
           },
-        }))}
+          ...drawerApps.map((app) => ({
+            key: app.id,
+            label: app.name,
+            icon: app.iconUrl ? (
+              <img src={app.iconUrl} alt="" className={styles.mobileFooterDrawerIcon} />
+            ) : (
+              <Icon name="grid-2x2" size="lg" aria-hidden />
+            ),
+            onClick: () => {
+              setAppsOpen(false);
+              router.push(app.routePrefix);
+            },
+          })),
+        ]}
       />
     </div>
   );

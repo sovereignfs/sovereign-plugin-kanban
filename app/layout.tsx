@@ -3,6 +3,7 @@ import { sdk } from '@sovereignfs/sdk';
 import { ToastProvider } from '@sovereignfs/ui';
 import { KanbanHeader } from './_components/KanbanHeader';
 import { KanbanMobileFooter, type MobileAppEntry } from './_components/KanbanMobileFooter';
+import { KanbanMobileHeader } from './_components/KanbanMobileHeader';
 import { requireUser } from './_lib/authz';
 import { getDb } from './_lib/db';
 import { hasUnseenInboxActivity } from './_lib/queries';
@@ -19,17 +20,17 @@ import styles from './kanban.module.css';
  * here — it's scoped to the Home/Inbox routes only via their own
  * `(home)/layout.tsx`, so Board View gets the header but no sidebar.
  *
- * The header keeps a pure-CSS `@media` hide-on-mobile (matching the
- * sidebar's own prior convention) rather than `useIsMobile`: zero
- * hydration-flash risk, and mobile has no header yet (footer-only chrome
- * stays as-is for now). `useIsMobile` (inside `KanbanMobileFooter`) is used
- * for the *footer* specifically, since unlike a pure CSS hide it avoids
- * ever measuring/publishing shell-chrome height from `MobileFooter` on
- * desktop at all. `<ResponsiveSurface>` itself can't be used directly here
- * — it has no `'use client'` of its own (by design; every real consumer in
- * this repo renders it from inside an already-client component, never
- * straight from a Server Component's JSX), so `KanbanMobileFooter` decides
- * internally via `useIsMobile` instead of this layout wrapping it.
+ * The desktop header (`KanbanHeader`) keeps a pure-CSS `@media` hide-on-mobile
+ * (matching the sidebar's own prior convention): zero hydration-flash risk.
+ * Mobile gets its own equivalent, `KanbanMobileHeader`, gated by
+ * `useIsMobile` instead — same reasoning as `KanbanMobileFooter` (below):
+ * unlike a pure CSS hide, this avoids ever measuring/publishing shell-chrome
+ * height from `MobileHeader`/`MobileFooter` on desktop at all.
+ * `<ResponsiveSurface>` itself can't be used directly here — it has no
+ * `'use client'` of its own (by design; every real consumer in this repo
+ * renders it from inside an already-client component, never straight from a
+ * Server Component's JSX), so both mobile components decide internally via
+ * `useIsMobile` instead of this layout wrapping them.
  *
  * K.11: the mobile footer's Inbox unseen badge is computed here — a layout
  * runs on every navigation within the plugin, not just visits to
@@ -79,8 +80,35 @@ export default async function KanbanLayout({ children }: { children: ReactNode }
 
   return (
     <ToastProvider>
-      <div className={styles.shell}>
+      {/* `id="sv-app-shell"` — the platform's own shell root id
+          (`runtime/app/(platform)/layout.tsx`), never rendered for this
+          plugin's own routes since `shell: minimal` composes under
+          `(minimal)`, not `(platform)`, so reusing it here can't collide.
+          `MobileHeader`/`MobileFooter` (used by `KanbanMobileHeader`/
+          `KanbanMobileFooter` below) already call
+          `usePublishShellChromeHeight` internally, looking up exactly this
+          id to publish `--sv-shell-header-height`/`--sv-shell-footer-height`
+          onto — previously a no-op here with no matching element anywhere
+          in this plugin's tree, so every consumer of those variables
+          (`Drawer`'s own `bottom: var(--sv-shell-footer-height, 0)` among
+          them) silently fell back to a value that doesn't account for this
+          plugin's real, self-rendered chrome. Found live: `MobileAppsDrawer`
+          extended all the way to the viewport's bottom edge instead of
+          stopping above the footer, with only the footer's own higher
+          z-index (101) hiding the overlap — its last row of tiles sat
+          entirely behind the (opaque) footer with zero visible clearance,
+          not just tight padding. Adding this id costs nothing beyond what
+          `MobileHeader`/`MobileFooter` were already trying to do. */}
+      <div id="sv-app-shell" className={styles.shell}>
         <KanbanHeader
+          user={{
+            name: session?.user.name ?? null,
+            email: session?.user.email ?? '',
+            image: session?.user.image ?? null,
+          }}
+          instanceName={instanceName}
+        />
+        <KanbanMobileHeader
           user={{
             name: session?.user.name ?? null,
             email: session?.user.email ?? '',
