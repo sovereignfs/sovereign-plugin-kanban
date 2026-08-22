@@ -1105,8 +1105,11 @@
    padding of its own (see Popover.module.css), so both pieces below supply
    their own. ------------------------------------------------------------- */
 
+/* Top padding bumped from `--sv-space-3` — "Apps" sat almost flush against
+   the panel's rounded top edge with barely any breathing room
+   (developer-reported). */
 .appsPopoverHeader {
-  padding: var(--sv-space-3) var(--sv-space-3) var(--sv-space-1);
+  padding: var(--sv-space-4) var(--sv-space-3) var(--sv-space-1);
   font-size: var(--sv-font-size-sm);
   font-weight: var(--sv-font-weight-semibold);
   color: var(--sv-color-text-primary);
@@ -1144,7 +1147,7 @@
   flex-direction: column;
   align-items: center;
   gap: var(--sv-space-2);
-  padding: var(--sv-space-3) var(--sv-space-2);
+  padding: var(--sv-space-2);
   border-radius: var(--sv-radius-md);
   text-decoration: none;
   color: var(--sv-color-text-primary);
@@ -1157,22 +1160,35 @@
   }
 }
 
+/* 40px -> 32px (developer-reported as too large relative to the tile's own
+   name label). `Icon`'s `currentColor` fill (the "Home" tile) and
+   `.appTileIconImg`'s `object-fit: contain` (every plugin-icon `<img>` tile)
+   both scale cleanly with the box — no separate light/dark handling needed,
+   `--sv-color-surface-sunken` already themes itself. */
 .appTileIcon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--sv-radius-md);
   background: var(--sv-color-surface-sunken);
-  font-size: var(--sv-font-size-sm);
+  font-size: var(--sv-font-size-xs);
   font-weight: var(--sv-font-weight-semibold);
   overflow: hidden;
 }
 
+/* 22px, not the box's full 32px — plugin icons are opaque bitmap-ish glyphs
+   that read visually heavier than an outlined `Icon` at the same box size,
+   so filling the box edge-to-edge (the old 100%/100%) made them look
+   noticeably larger/bolder than the "Home" tile's `Icon` glyph sitting at
+   its own default size next to it (developer-reported inconsistency). 22px
+   was picked to land close to `Icon`'s `md` (20px, what "Home" now uses)
+   given the two are drawn by different renderers and never pixel-identical
+   by construction. */
 .appTileIconImg {
-  width: 100%;
-  height: 100%;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
 }
 

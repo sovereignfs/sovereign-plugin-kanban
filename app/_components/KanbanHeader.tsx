@@ -45,9 +45,11 @@ export type KanbanHeaderUser = KanbanAccountMenuUser;
 export function KanbanHeader({
   user,
   instanceName,
+  isAdmin,
 }: {
   user: KanbanHeaderUser;
   instanceName: string;
+  isAdmin: boolean;
 }) {
   const brandInitial = instanceName.charAt(0).toUpperCase() || 'S';
 
@@ -72,7 +74,7 @@ export function KanbanHeader({
       </div>
 
       <div className={styles.headerRight}>
-        <AppsMenu />
+        <AppsMenu isAdmin={isAdmin} />
         <KanbanAccountMenu user={user} avatarSize="md" />
       </div>
     </header>

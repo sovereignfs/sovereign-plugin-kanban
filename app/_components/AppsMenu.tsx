@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Popover, Spinner } from '@sovereignfs/ui';
+import { Icon, Popover, Spinner } from '@sovereignfs/ui';
 import styles from '../kanban.module.css';
 
 interface AppEntry {
@@ -53,8 +53,23 @@ function monogram(name: string): string {
  * that exact boundary. Not every target has an intercepting route, but a
  * plain anchor is correct and safe for all of them, so there's no reason to
  * special-case per target.
+ *
+ * "Home" and (admin-only) "Console" are two static tiles ahead of the
+ * fetched list, not part of `/api/plugins`'s response — neither is a real
+ * listable plugin the way the rest of the grid's tiles are. Launcher itself
+ * is never manifest-driven (it's a hardcoded shell route, `/launcher`), and
+ * Console is a real plugin but deliberately filtered out of that same
+ * response by `CHROME_PLUGIN_IDS` (`runtime/src/launcher-plugins.ts`) —
+ * reachable elsewhere (the platform sidebar's own dedicated icon) but never
+ * meant to appear as an ordinary Launcher tile. Both are rendered
+ * unconditionally alongside the grid (not gated behind `state.status ===
+ * 'loaded'`) so they're visible immediately without waiting on the fetch.
+ * `isAdmin` is computed server-side in `layout.tsx` (`sdk.auth.hasCapability`,
+ * the same capability/pattern the platform shell's own `AdminConsoleIcon`
+ * uses) and threaded down through `KanbanHeader` — this component has no
+ * server-side session access of its own to compute it locally.
  */
-export function AppsMenu() {
+export function AppsMenu({ isAdmin }: { isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<State>({ status: 'loading' });
 
@@ -103,19 +118,27 @@ export function AppsMenu() {
       }
     >
       <div className={styles.appsPopoverHeader}>Apps</div>
-      {state.status === 'loading' && (
-        <div className={styles.appsPopoverLoading}>
-          <Spinner size="md" label="Loading apps…" />
-        </div>
-      )}
-      {state.status === 'error' && (
-        <p className={`${styles.formError} ${styles.appsPopoverError}`}>
-          Couldn&apos;t load apps. Try again.
-        </p>
-      )}
-      {state.status === 'loaded' && (
-        <div className={styles.appsGrid}>
-          {state.apps.map((app) => (
+      <div className={styles.appsGrid}>
+        <a href="/launcher" className={styles.appTile}>
+          <span className={styles.appTileIcon} aria-hidden="true">
+            <Icon name="house" size="md" aria-hidden />
+          </span>
+          <span className={styles.appTileName}>Home</span>
+        </a>
+        {isAdmin && (
+          <a href="/console" className={styles.appTile}>
+            <span className={styles.appTileIcon} aria-hidden="true">
+              <img
+                src="/plugin-icons/fs.sovereign.console.svg"
+                alt=""
+                className={styles.appTileIconImg}
+              />
+            </span>
+            <span className={styles.appTileName}>Console</span>
+          </a>
+        )}
+        {state.status === 'loaded' &&
+          state.apps.map((app) => (
             <a key={app.id} href={app.routePrefix} className={styles.appTile}>
               <span className={styles.appTileIcon} aria-hidden="true">
                 {app.iconUrl ? (
@@ -127,7 +150,16 @@ export function AppsMenu() {
               <span className={styles.appTileName}>{app.name}</span>
             </a>
           ))}
+      </div>
+      {state.status === 'loading' && (
+        <div className={styles.appsPopoverLoading}>
+          <Spinner size="md" label="Loading apps…" />
         </div>
+      )}
+      {state.status === 'error' && (
+        <p className={`${styles.formError} ${styles.appsPopoverError}`}>
+          Couldn&apos;t load apps. Try again.
+        </p>
       )}
     </Popover>
   );
