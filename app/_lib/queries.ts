@@ -588,150 +588,217 @@ export async function getActivityPage(
 }
 
 // ---------------------------------------------------------------------------
-// Inbox (K.11)
+// Inbox (K.11, redesigned)
 
 export const INBOX_PAGE_SIZE = 100;
 
+/**
+ * "assigned" = actor was assigned to the card by someone else. "reply" =
+ * someone replied to one of the actor's own comments. Deliberately narrower
+ * than a per-board activity log (that's `CardDetail['activity']`, rendered
+ * in the card detail panel via `describeActivity()`) — the Inbox is "things
+ * that happened *to* you," not "everything that happened on your boards."
+ * @-mentions are out of scope: this plugin has no mention parsing anywhere
+ * yet, so there's no `'mention'` kind here to add later without new
+ * infrastructure first.
+ */
 export interface InboxItem {
   id: string;
+  kind: 'assigned' | 'reply';
   boardId: string;
   boardName: string;
-  cardId: string | null;
-  cardTitle: string | null;
+  cardId: string;
+  cardTitle: string;
   actorId: string;
-  type: string;
-  payload: unknown;
   createdAt: number;
 }
 
 export interface InboxFeed {
   items: InboxItem[];
-  lists: Array<{ id: string; name: string }>;
-  labels: Array<{ id: string; name: string; color: string }>;
   members: MemberIdentity[];
 }
 
-async function memberBoardIds(db: KanbanDb, actor: Actor): Promise<string[]> {
-  const rows = await db
-    .select({ boardId: schema.boardMembers.boardId })
-    .from(schema.boardMembers)
-    .where(
-      and(eq(schema.boardMembers.userId, actor.userId), eq(schema.boardMembers.tenantId, actor.tenantId)),
-    );
-  return rows.map((r) => r.boardId);
-}
-
 /**
- * Activity across every board `actor` belongs to, newest first, capped at
- * `INBOX_PAGE_SIZE` with no further pagination — a deliberate Phase 1 scope
- * decision (SPEC's K.11 review checklist doesn't call for "load more"; this
- * is a feed to skim, not an archive to page through). `lists`/`labels`/
- * `members` are unioned across all those boards so the card-scoped
- * `describeActivity()`/`displayName()` (K.8/K.9) can resolve every row
- * without per-board context switching — ids are globally unique nanoids, so
- * a flat union never collides across boards.
+ * Personalized Inbox (K.11 redesign) — "cards assigned to me" and "replies
+ * to my comments," queried straight from the source-of-truth tables
+ * (`kanban_card_assignees`, `kanban_comments`) rather than scanning
+ * `kanban_activity`: that log's `payload` is opaque JSON `text` with no
+ * native query support, so filtering "is this about me" through it would
+ * mean fetching every board's activity and parsing JSON in application
+ * code — the same "everything, unfiltered" shape this redesign replaces.
+ * Both queries below lean on their own indexed columns instead
+ * (`kanban_card_assignees_user_idx`; the new `kanban_comments_author_idx`/
+ * `kanban_comments_parent_idx` pair, used as a two-step "find my comment
+ * ids, then find replies to them" rather than a self-join, so each step can
+ * use its own index rather than scanning the whole comments table).
+ *
+ * Self-assignment and replying to your own comment are excluded (matches
+ * `assignMember`/`addComment`'s own notification dedup — you don't need to
+ * be told about your own action). Capped at `INBOX_PAGE_SIZE`, newest first,
+ * no further pagination — same deliberate Phase 1 scope as before.
  */
 export async function getInboxFeed(db: KanbanDb, actor: Actor): Promise<InboxFeed> {
-  const boardIds = await memberBoardIds(db, actor);
-  if (boardIds.length === 0) return { items: [], lists: [], labels: [], members: [] };
-
-  const [activityRows, boardRows, listRows, labelRows, memberRows] = await Promise.all([
+  const [assignedRows, myCommentRows] = await Promise.all([
     db
       .select({
-        id: schema.activity.id,
-        boardId: schema.activity.boardId,
-        cardId: schema.activity.cardId,
-        actorId: schema.activity.actorId,
-        type: schema.activity.type,
-        payload: schema.activity.payload,
-        createdAt: schema.activity.createdAt,
+        cardId: schema.cardAssignees.cardId,
+        actorId: schema.cardAssignees.assignedBy,
+        createdAt: schema.cardAssignees.createdAt,
       })
-      .from(schema.activity)
-      .where(inArray(schema.activity.boardId, boardIds))
-      .orderBy(desc(schema.activity.createdAt), desc(schema.activity.id))
+      .from(schema.cardAssignees)
+      .where(
+        and(
+          eq(schema.cardAssignees.userId, actor.userId),
+          eq(schema.cardAssignees.tenantId, actor.tenantId),
+          ne(schema.cardAssignees.assignedBy, actor.userId),
+        ),
+      )
+      .orderBy(desc(schema.cardAssignees.createdAt))
       .limit(INBOX_PAGE_SIZE),
     db
-      .select({ id: schema.boards.id, name: schema.boards.name })
-      .from(schema.boards)
-      .where(inArray(schema.boards.id, boardIds)),
-    db
-      .select({ id: schema.lists.id, name: schema.lists.name })
-      .from(schema.lists)
-      .where(inArray(schema.lists.boardId, boardIds)),
-    db
-      .select({ id: schema.labels.id, name: schema.labels.name, color: schema.labels.color })
-      .from(schema.labels)
-      .where(inArray(schema.labels.boardId, boardIds)),
-    db
-      .select({ userId: schema.boardMembers.userId })
-      .from(schema.boardMembers)
-      .where(inArray(schema.boardMembers.boardId, boardIds)),
+      .select({ id: schema.comments.id })
+      .from(schema.comments)
+      .where(
+        and(eq(schema.comments.authorId, actor.userId), eq(schema.comments.tenantId, actor.tenantId)),
+      ),
   ]);
 
-  const cardIds = [
-    ...new Set(activityRows.map((a) => a.cardId).filter((id): id is string => id !== null)),
-  ];
-  const cardRows =
-    cardIds.length === 0
+  const myCommentIds = myCommentRows.map((c) => c.id);
+  const replyRows =
+    myCommentIds.length === 0
       ? []
       : await db
-          .select({ id: schema.cards.id, title: schema.cards.title })
-          .from(schema.cards)
-          .where(inArray(schema.cards.id, cardIds));
-  const cardTitleById = new Map(cardRows.map((c) => [c.id, c.title]));
+          .select({
+            id: schema.comments.id,
+            cardId: schema.comments.cardId,
+            actorId: schema.comments.authorId,
+            createdAt: schema.comments.createdAt,
+          })
+          .from(schema.comments)
+          .where(
+            and(
+              inArray(schema.comments.parentId, myCommentIds),
+              ne(schema.comments.authorId, actor.userId),
+            ),
+          )
+          .orderBy(desc(schema.comments.createdAt))
+          .limit(INBOX_PAGE_SIZE);
+
+  if (assignedRows.length === 0 && replyRows.length === 0) return { items: [], members: [] };
+
+  const cardIds = [...new Set([...assignedRows.map((r) => r.cardId), ...replyRows.map((r) => r.cardId)])];
+  const cardRows = await db
+    .select({ id: schema.cards.id, title: schema.cards.title, boardId: schema.cards.boardId })
+    .from(schema.cards)
+    .where(inArray(schema.cards.id, cardIds));
+  const cardById = new Map(cardRows.map((c) => [c.id, c]));
+
+  const boardIds = [...new Set(cardRows.map((c) => c.boardId))];
+  const boardRows =
+    boardIds.length === 0
+      ? []
+      : await db
+          .select({ id: schema.boards.id, name: schema.boards.name })
+          .from(schema.boards)
+          .where(inArray(schema.boards.id, boardIds));
   const boardNameById = new Map(boardRows.map((b) => [b.id, b.name]));
 
-  const uniqueMemberIds = [...new Set(memberRows.map((m) => m.userId))];
+  // A card can have been deleted between the assignment/reply and this read
+  // (no cascading cleanup on the Inbox side) — skip rather than render a
+  // dangling row with no title/board to show.
+  function toItem(
+    kind: InboxItem['kind'],
+    id: string,
+    cardId: string,
+    actorId: string,
+    createdAt: number,
+  ): InboxItem | null {
+    const card = cardById.get(cardId);
+    if (!card) return null;
+    return {
+      id,
+      kind,
+      boardId: card.boardId,
+      boardName: boardNameById.get(card.boardId) ?? 'Unknown board',
+      cardId,
+      cardTitle: card.title,
+      actorId,
+      createdAt,
+    };
+  }
+
+  const items = [
+    ...assignedRows.map((r) =>
+      toItem('assigned', `assigned:${r.cardId}:${actor.userId}`, r.cardId, r.actorId, r.createdAt),
+    ),
+    ...replyRows.map((r) => toItem('reply', r.id, r.cardId, r.actorId, r.createdAt)),
+  ]
+    .filter((i): i is InboxItem => i !== null)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, INBOX_PAGE_SIZE);
+
+  const actorIds = [...new Set(items.map((i) => i.actorId))];
   const directoryUsers =
-    uniqueMemberIds.length === 0 ? [] : await sdk.directory.resolveUsers({ ids: uniqueMemberIds });
+    actorIds.length === 0 ? [] : await sdk.directory.resolveUsers({ ids: actorIds });
   const directoryById = new Map(directoryUsers.map((u) => [u.id, u]));
-  const members: MemberIdentity[] = uniqueMemberIds.map((userId) => ({
+  const members: MemberIdentity[] = actorIds.map((userId) => ({
     userId,
     name: directoryById.get(userId)?.name ?? null,
     email: directoryById.get(userId)?.email ?? null,
     image: directoryById.get(userId)?.image ?? null,
   }));
 
-  const items: InboxItem[] = activityRows.map((a) => ({
-    id: a.id,
-    boardId: a.boardId,
-    boardName: boardNameById.get(a.boardId) ?? 'Unknown board',
-    cardId: a.cardId,
-    cardTitle: a.cardId ? (cardTitleById.get(a.cardId) ?? null) : null,
-    actorId: a.actorId,
-    type: a.type,
-    payload: a.payload === null ? null : (JSON.parse(a.payload) as unknown),
-    createdAt: a.createdAt,
-  }));
-
-  return { items, lists: listRows, labels: labelRows, members };
+  return { items, members };
 }
 
 /**
  * For the sidebar's unseen badge — a cheap existence check, not a full feed
- * fetch. Excludes the actor's own activity from "latest": your own action
- * isn't news to you, so commenting on your own card shouldn't light up your
- * own unseen indicator (the full feed still shows it — this only affects
- * the badge).
+ * fetch. Mirrors `getInboxFeed`'s own self-exclusion (no badge for your own
+ * self-assignment or a reply to your own comment).
  */
 export async function hasUnseenInboxActivity(db: KanbanDb, actor: Actor): Promise<boolean> {
-  const boardIds = await memberBoardIds(db, actor);
-  if (boardIds.length === 0) return false;
-
-  const [latestActivityRows, seenRows] = await Promise.all([
-    db
-      .select({ createdAt: schema.activity.createdAt })
-      .from(schema.activity)
-      .where(and(inArray(schema.activity.boardId, boardIds), ne(schema.activity.actorId, actor.userId)))
-      .orderBy(desc(schema.activity.createdAt))
-      .limit(1),
+  const [seenRows, latestAssignedRows, myCommentRows] = await Promise.all([
     db
       .select({ lastSeenAt: schema.inboxState.lastSeenAt })
       .from(schema.inboxState)
       .where(eq(schema.inboxState.userId, actor.userId)),
+    db
+      .select({ createdAt: schema.cardAssignees.createdAt })
+      .from(schema.cardAssignees)
+      .where(
+        and(
+          eq(schema.cardAssignees.userId, actor.userId),
+          eq(schema.cardAssignees.tenantId, actor.tenantId),
+          ne(schema.cardAssignees.assignedBy, actor.userId),
+        ),
+      )
+      .orderBy(desc(schema.cardAssignees.createdAt))
+      .limit(1),
+    db
+      .select({ id: schema.comments.id })
+      .from(schema.comments)
+      .where(
+        and(eq(schema.comments.authorId, actor.userId), eq(schema.comments.tenantId, actor.tenantId)),
+      ),
   ]);
-  const latest = latestActivityRows[0]?.createdAt;
-  if (latest === undefined) return false;
+
   const lastSeenAt = seenRows[0]?.lastSeenAt ?? null;
-  return lastSeenAt === null || latest > lastSeenAt;
+
+  const latestAssignedAt = latestAssignedRows[0]?.createdAt;
+  if (latestAssignedAt !== undefined && (lastSeenAt === null || latestAssignedAt > lastSeenAt)) {
+    return true;
+  }
+
+  const myCommentIds = myCommentRows.map((c) => c.id);
+  if (myCommentIds.length === 0) return false;
+  const latestReplyRows = await db
+    .select({ createdAt: schema.comments.createdAt })
+    .from(schema.comments)
+    .where(
+      and(inArray(schema.comments.parentId, myCommentIds), ne(schema.comments.authorId, actor.userId)),
+    )
+    .orderBy(desc(schema.comments.createdAt))
+    .limit(1);
+  const latestReplyAt = latestReplyRows[0]?.createdAt;
+  return latestReplyAt !== undefined && (lastSeenAt === null || latestReplyAt > lastSeenAt);
 }

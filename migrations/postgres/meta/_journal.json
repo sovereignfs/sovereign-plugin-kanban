@@ -29,6 +29,13 @@
       "when": 1787221043069,
       "tag": "0003_dear_martin_li",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787303744047,
+      "tag": "0004_inbox_comment_indexes",
+      "breakpoints": true
     }
   ]
 }

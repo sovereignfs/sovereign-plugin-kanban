@@ -1271,62 +1271,159 @@ describe('inbox (K.11)', () => {
     expect(must(after[0], 'updated row').userId).toBe(owner.id);
   });
 
-  it('getInboxFeed only returns activity from boards the actor is a member of', async () => {
-    const { boardId, listId } = await setup();
+  /** Adds `userId` as a board member the same way the two setup steps K.9 tests already use. */
+  async function addOtherMember(
+    projectId: string,
+    boardId: string,
+    userId: string,
+    name: string,
+  ): Promise<void> {
+    registerDirectoryUser({ id: userId, email: `${userId}@example.com`, name });
     actAs(owner);
-    expect((await actions.createCard({ listId, title: 'Owner board card' })).ok).toBe(true);
+    expect((await actions.addProjectMember({ projectId, userId })).ok).toBe(true);
+    expect((await actions.addBoardMember({ boardId, userId })).ok).toBe(true);
+  }
 
-    actAs(outsider);
-    expect((await actions.createProject({ name: 'Outsider project' })).ok).toBe(true);
-    const outsiderProject = must(
-      (await t.db.select().from(schema.projects)).find((p) => p.name === 'Outsider project'),
-      'outsider project',
+  it('getInboxFeed shows cards assigned to the actor by someone else, excludes self-assignment and other people’s assignments', async () => {
+    const { projectId, boardId, listId } = await setup();
+    await addOtherMember(projectId, boardId, 'user-other-member', 'Other');
+
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'Card for other' })).ok).toBe(true);
+    const cardForOther = must(
+      (await t.db.select().from(schema.cards)).find((c) => c.title === 'Card for other'),
+      'card for other',
     );
+    expect((await actions.createCard({ listId, title: 'Self-assigned card' })).ok).toBe(true);
+    const selfAssignedCard = must(
+      (await t.db.select().from(schema.cards)).find((c) => c.title === 'Self-assigned card'),
+      'self-assigned card',
+    );
+    // Owner assigns the other member to one card, and themselves to another.
     expect(
-      (await actions.createBoard({ projectId: outsiderProject.id, name: 'Outsider board', color: 'red' }))
-        .ok,
+      (await actions.assignMember({ cardId: cardForOther.id, userId: 'user-other-member' })).ok,
     ).toBe(true);
-    const outsiderBoard = must(
-      (await t.db.select().from(schema.boards)).find((b) => b.name === 'Outsider board'),
-      'outsider board',
+    expect((await actions.assignMember({ cardId: selfAssignedCard.id, userId: owner.id })).ok).toBe(true);
+
+    const { getInboxFeed } = await import('../_lib/queries');
+
+    const otherFeed = await getInboxFeed(t.db, { userId: 'user-other-member', tenantId: 'default' });
+    expect(otherFeed.items).toHaveLength(1);
+    expect(must(otherFeed.items[0], 'assigned item')).toMatchObject({
+      kind: 'assigned',
+      cardId: cardForOther.id,
+      boardId,
+      actorId: owner.id,
+    });
+
+    // Self-assignment never shows up in the assigner's own inbox.
+    const ownerFeed = await getInboxFeed(t.db, { userId: owner.id, tenantId: owner.tenantId });
+    expect(ownerFeed.items.some((i) => i.cardId === selfAssignedCard.id)).toBe(false);
+    expect(ownerFeed.items.some((i) => i.cardId === cardForOther.id)).toBe(false);
+  });
+
+  it('getInboxFeed shows replies to the actor’s own comments, excludes top-level comments and replies to someone else’s comment', async () => {
+    const { projectId, boardId, listId } = await setup();
+    await addOtherMember(projectId, boardId, 'user-other-member', 'Other');
+
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'Discussed card' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    expect((await actions.addComment({ cardId: card.id, body: 'Owner’s top-level comment' })).ok).toBe(
+      true,
     );
+    const ownerComment = must(
+      (await t.db.select().from(schema.comments)).find((c) => c.authorId === owner.id),
+      'owner comment',
+    );
+
+    actAs({ id: 'user-other-member', tenantId: 'default' });
     expect(
-      (await actions.createList({ boardId: outsiderBoard.id, name: 'Outsider list' })).ok,
+      (
+        await actions.addComment({
+          cardId: card.id,
+          body: 'Reply to owner',
+          parentId: ownerComment.id,
+        })
+      ).ok,
     ).toBe(true);
-    const outsiderList = must(
-      (await t.db.select().from(schema.lists)).find((l) => l.name === 'Outsider list'),
-      'outsider list',
+    const reply = must(
+      (await t.db.select().from(schema.comments)).find((c) => c.authorId === 'user-other-member'),
+      'reply',
     );
-    expect((await actions.createCard({ listId: outsiderList.id, title: 'Outsider card' })).ok).toBe(true);
+    // A top-level comment from the other member — not a reply to anything of owner's.
+    expect((await actions.addComment({ cardId: card.id, body: 'Unrelated top-level' })).ok).toBe(true);
+    // Owner replies to their own comment — should never show up in their own inbox.
+    actAs(owner);
+    expect(
+      (await actions.addComment({ cardId: card.id, body: 'Owner replies to self', parentId: ownerComment.id })).ok,
+    ).toBe(true);
 
     const { getInboxFeed } = await import('../_lib/queries');
     const ownerFeed = await getInboxFeed(t.db, { userId: owner.id, tenantId: owner.tenantId });
-    expect(ownerFeed.items.every((i) => i.boardId === boardId)).toBe(true);
-    expect(ownerFeed.items.some((i) => i.boardId === outsiderBoard.id)).toBe(false);
+    expect(ownerFeed.items).toHaveLength(1);
+    expect(must(ownerFeed.items[0], 'reply item')).toMatchObject({
+      kind: 'reply',
+      id: reply.id,
+      cardId: card.id,
+      boardId,
+      actorId: 'user-other-member',
+    });
 
-    const outsiderFeed = await getInboxFeed(t.db, { userId: outsider.id, tenantId: outsider.tenantId });
-    expect(outsiderFeed.items.every((i) => i.boardId === outsiderBoard.id)).toBe(true);
-    expect(outsiderFeed.items.some((i) => i.boardId === boardId)).toBe(false);
+    // The other member never gets a reply notification for owner's own reply
+    // to owner's own comment, and has no comments of their own replied to.
+    const otherFeed = await getInboxFeed(t.db, { userId: 'user-other-member', tenantId: 'default' });
+    expect(otherFeed.items).toHaveLength(0);
   });
 
-  it('hasUnseenInboxActivity ignores the actor’s own activity but reacts to others’, and clears after markInboxSeen', async () => {
-    const { projectId, boardId } = await setup();
+  it('hasUnseenInboxActivity ignores generic board activity but reacts to being assigned or getting a reply, and clears after markInboxSeen', async () => {
+    const { projectId, boardId, listId } = await setup();
     const { hasUnseenInboxActivity } = await import('../_lib/queries');
     const ownerActor = { userId: owner.id, tenantId: owner.tenantId };
 
     actAs(owner);
     expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false); // only own board.created so far
 
-    registerDirectoryUser({ id: 'user-other-member', email: 'other@example.com', name: 'Other' });
-    expect((await actions.addProjectMember({ projectId, userId: 'user-other-member' })).ok).toBe(true);
-    expect((await actions.addBoardMember({ boardId, userId: 'user-other-member' })).ok).toBe(true);
+    await addOtherMember(projectId, boardId, 'user-other-member', 'Other');
     expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false); // still only owner's own actions
 
     actAs({ id: 'user-other-member', tenantId: 'default' });
+    // Generic board activity (list creation) is not personalized — must not light the badge.
     expect((await actions.createList({ boardId, name: 'A new list' })).ok).toBe(true);
-    expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(true); // someone else acted
+    expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false);
 
-    actAs(owner); // markInboxSeen marks whichever user is currently "acting"
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'Card' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    expect(
+      (await actions.assignMember({ cardId: card.id, userId: 'user-other-member' })).ok,
+    ).toBe(true);
+    // Assigning someone else doesn't light up the assigner's own badge.
+    expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false);
+
+    const otherActor = { userId: 'user-other-member', tenantId: 'default' };
+    expect(await hasUnseenInboxActivity(t.db, otherActor)).toBe(true); // someone assigned them a card
+
+    actAs({ id: 'user-other-member', tenantId: 'default' });
+    await actions.markInboxSeen();
+    expect(await hasUnseenInboxActivity(t.db, otherActor)).toBe(false);
+
+    // A reply to the owner's comment lights the owner's badge back up.
+    actAs(owner);
+    expect((await actions.addComment({ cardId: card.id, body: 'Owner comment' })).ok).toBe(true);
+    const ownerComment = must(
+      (await t.db.select().from(schema.comments)).find((c) => c.authorId === owner.id),
+      'owner comment',
+    );
+    expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false); // own comment, not a reply yet
+
+    actAs({ id: 'user-other-member', tenantId: 'default' });
+    expect(
+      (await actions.addComment({ cardId: card.id, body: 'Reply', parentId: ownerComment.id })).ok,
+    ).toBe(true);
+    expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(true);
+
+    actAs(owner);
     await actions.markInboxSeen();
     expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false);
   });

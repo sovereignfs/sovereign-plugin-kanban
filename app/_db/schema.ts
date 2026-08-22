@@ -244,7 +244,15 @@ export const comments = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => [index('kanban_comments_card_idx').on(t.cardId)],
+  (t) => [
+    index('kanban_comments_card_idx').on(t.cardId),
+    // Support the Inbox's "replies to my comments" query (K.11 redesign):
+    // author_idx finds the actor's own comments, parent_idx then finds
+    // replies to those ids — both sides of that self-join need an index or
+    // it degrades to a full table scan.
+    index('kanban_comments_author_idx').on(t.authorId),
+    index('kanban_comments_parent_idx').on(t.parentId),
+  ],
 );
 
 export const activity = sqliteTable(

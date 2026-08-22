@@ -7,17 +7,17 @@
  * `card.deleted`/`list.*`/`board.created`/`member.*` are board-level events
  * (recorded with no `cardId`, see `activity.ts`) and so never actually reach
  * a card-scoped feed like this one — their copy exists anyway for
- * completeness and for K.11's board/Inbox activity feed, which reuses this
- * function. The `default` case keeps this function forward-compatible with
- * activity types added by later tasks without requiring an edit here first.
+ * completeness. The `default` case keeps this function forward-compatible
+ * with activity types added by later tasks without requiring an edit here
+ * first.
  *
  * `ActivityCopyContext.lists`/`labels` are deliberately the minimal shape
  * this file actually reads (`id`/`name`[/`color`]), not the full
- * `BoardData['lists']`/`['labels']` — K.11's Inbox feed spans multiple
- * boards and only fetches that minimal shape (unioned across boards, see
- * `queries.ts`'s `getInboxFeed`), so requiring the fuller per-board type
- * here would make this function unusable there. A single-board `BoardData`
- * value still satisfies this structurally (extra fields are fine).
+ * `BoardData['lists']`/`['labels']` — a single-board `BoardData` value still
+ * satisfies this structurally (extra fields are fine). This function is only
+ * consumed by the card detail panel's own activity log now — the Inbox
+ * (K.11, redesigned) no longer goes through `kanban_activity`/this function
+ * at all; see `queries.ts`'s `getInboxFeed` for its own dedicated copy.
  */
 import type { CardDetail } from './queries';
 

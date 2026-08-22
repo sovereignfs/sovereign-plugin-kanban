@@ -1,15 +1,18 @@
 import Link from 'next/link';
 import { EmptyState, Typography } from '@sovereignfs/ui';
-import { describeActivity } from '../_lib/activity-copy';
 import { groupByDay } from '../_lib/inbox';
 import { displayName } from '../_lib/identity';
-import type { InboxFeed } from '../_lib/queries';
+import type { InboxFeed, InboxItem } from '../_lib/queries';
 import type { CurrentUser } from './BoardView';
 import styles from '../kanban.module.css';
 import { TimeAgo } from './TimeAgo';
 
+function describeInboxItem(kind: InboxItem['kind']): string {
+  return kind === 'assigned' ? 'assigned you to' : 'replied to your comment on';
+}
+
 /**
- * Server-renderable — `describeActivity`/`displayName`/`groupByDay` are
+ * Server-renderable — `describeInboxItem`/`displayName`/`groupByDay` are
  * plain functions (no hooks, no client-only APIs), so this list needs no
  * `'use client'` of its own despite living alongside client components.
  * `TimeAgo` (rendered below) is itself a client component, but a Server
@@ -20,9 +23,9 @@ export function InboxFeedList({ feed, currentUser }: { feed: InboxFeed; currentU
   if (feed.items.length === 0) {
     return (
       <EmptyState
-        icon="bell"
+        icon="inbox"
         heading="Nothing here yet"
-        description="Activity across the boards you belong to will show up here."
+        description="Cards assigned to you and replies to your comments will show up here."
       />
     );
   }
@@ -40,24 +43,15 @@ export function InboxFeedList({ feed, currentUser }: { feed: InboxFeed; currentU
             {group.items.map((item) => (
               <li key={item.id}>
                 <Link
-                  href={
-                    item.cardId
-                      ? `/kanban/b/${item.boardId}?card=${item.cardId}`
-                      : `/kanban/b/${item.boardId}`
-                  }
+                  href={`/kanban/b/${item.boardId}?card=${item.cardId}`}
                   className={styles.inboxItem}
                 >
                   <Typography variant="body">
                     <strong>{displayName(item.actorId, currentUser, feed.members)}</strong>{' '}
-                    {describeActivity(item, {
-                      lists: feed.lists,
-                      labels: feed.labels,
-                      resolveName: (userId) => displayName(userId, currentUser, feed.members),
-                    })}
+                    {describeInboxItem(item.kind)} &quot;{item.cardTitle}&quot;
                   </Typography>
                   <Typography variant="caption" className={styles.inboxItemMeta}>
-                    {item.boardName}
-                    {item.cardTitle ? ` · ${item.cardTitle}` : ''} · <TimeAgo ms={item.createdAt} />
+                    {item.boardName} · <TimeAgo ms={item.createdAt} />
                   </Typography>
                 </Link>
               </li>

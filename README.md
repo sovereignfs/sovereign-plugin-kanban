@@ -16,8 +16,9 @@ cards — built as an installable plugin for the
 - **Card detail**: description, labels, assignees, due date, checklist,
   threaded comments, and an audit-style activity log — all in one dialog on
   web, a full-screen view on mobile.
-- **Inbox**: a per-user feed of activity across every board you're a member
-  of (comments, mentions, due-date changes), with unread tracking.
+- **Inbox**: a per-user feed of cards assigned to you and replies to your own
+  comments, with unread tracking. (@-mentions aren't implemented yet — no
+  mention parsing exists in this plugin.)
 - **Board sharing** by invite, with owner/member roles.
 - Responsive: a dedicated mobile layout (swipeable list carousel, custom
   footer navigation) sharing the same data layer as web — see
@@ -36,7 +37,7 @@ Declared in [`manifest.json`](manifest.json):
 | --------------------- | --------------------------------------------------------------------------------------------- |
 | `auth:session`        | Every board/card action is scoped to the signed-in user (membership checks, activity authorship, assignee lookups). |
 | `db:readWrite`        | Own isolated database (`plugin_fs_sovereign_kanban`) for projects, boards, lists, cards, comments, and activity. |
-| `notifications:send`  | Delivers Inbox notifications for comments, mentions, and due-date activity to board members. |
+| `notifications:send`  | Delivers notifications for board membership, card assignment, and comment replies. |
 
 ## Running it locally
 

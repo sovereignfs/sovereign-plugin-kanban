@@ -227,7 +227,11 @@ export const comments = pgTable(
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
   },
-  (t) => [index('kanban_comments_card_idx').on(t.cardId)],
+  (t) => [
+    index('kanban_comments_card_idx').on(t.cardId),
+    index('kanban_comments_author_idx').on(t.authorId),
+    index('kanban_comments_parent_idx').on(t.parentId),
+  ],
 );
 
 export const activity = pgTable(

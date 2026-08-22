@@ -7,10 +7,14 @@ import { getDb } from '../../_lib/db';
 import { getInboxFeed } from '../../_lib/queries';
 
 /**
- * K.11 Inbox — activity across every board the user belongs to
- * (`getInboxFeed` scopes by membership the same way `getBoardData` does, so
- * a board the user has since left simply stops contributing rows; nothing
- * card/board-specific here needs its own access check beyond that).
+ * K.11 Inbox (redesigned) — cards assigned to the user and replies to the
+ * user's own comments, not a per-board activity log (that's the card detail
+ * panel's own activity section). `getInboxFeed` derives both straight from
+ * `kanban_card_assignees`/`kanban_comments`, scoped by `userId`/`authorId`
+ * rather than board membership, so no separate access check is needed here
+ * — a card the user is assigned to but no longer has board access to would
+ * be an existing edge case in the deep link itself, not something this page
+ * needs to filter out upfront.
  */
 export default async function InboxPage() {
   const actor = await requireUser();
