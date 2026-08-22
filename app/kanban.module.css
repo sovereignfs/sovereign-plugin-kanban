@@ -2555,6 +2555,78 @@
      the class) since `flex`/`min-width`/ellipsis truncation still apply. */
 }
 
+/* `CardDetailOverlay`'s mobile Dialog title bar, restyled via `Dialog`'s
+   `rowClassName`/`titleClassName` (`OverlayHeader`'s own defaults —
+   --sv-space-3/--sv-space-4 padding, --sv-font-size-xl title — read
+   noticeably bigger/boxier than `MobileBoardHeader` right above it on the
+   board screen this Dialog covers). Matches `.mobileBoardOverlayHeader`'s
+   padding and `.mobileBoardTitle`'s font (Typography's `h4` default) so the
+   two read as the same header chrome, not two different scales stacked on
+   top of each other. `!important` needed on both — `OverlayHeader.module.css`
+   (packages/ui) is injected after this file's own styles, so an equal-
+   specificity override here silently loses without it (confirmed live:
+   without `!important`, computed font-size/padding stayed at the DS
+   defaults despite both classes appearing in the element's className),
+   same DS-injection-order reasoning documented throughout this file.
+
+   Padding/font alone still left this row 6px taller than
+   `.mobileBoardOverlayHeader` (measured live: 52px vs 46px) — `.closeButton`
+   (`OverlayHeader.module.css`) is a hardcoded `var(--sv-touch-target-min,
+   44px)` box, unconditionally (unlike `Button`, which only enforces that
+   minimum inside `@media (pointer: coarse)`), so it alone was taller than
+   this row's own padding+title content. Rescoping `--sv-touch-target-min`
+   here (38px, matching this board's own back-chevron button — this row's
+   tallest element, driving its measured 46px) shrinks `.closeButton` (and
+   `.backButton`, unused here) down to match — developer-confirmed trade-off:
+   this specific close button's tap target now sits below the platform's
+   usual 44px minimum, scoped to just this row, so it doesn't affect any
+   other `OverlayHeader` consumer.
+
+   Left padding stays the same `--sv-space-2` (8px) as every other side —
+   a prior pass pushed it out to 58px to visually line up with
+   `.mobileBoardOverlayHeader`'s own title (which sits that far in because
+   of its leading back-chevron `Button`), but developer follow-up reversed
+   that: unlike the board's own list header, this row deliberately has no
+   back button at all (see the `!important` block below — no `onBack`,
+   keeps only `OverlayHeader`'s "×"), so it should read as its own flush
+   title row rather than faking a left inset for a button that was never
+   actually there. Scoped to this row only — `.mobileBoardOverlayHeader`
+   itself is untouched, still 58px-equivalent via its real back button. */
+.cardOverlayTitleRow {
+  padding: var(--sv-space-1) var(--sv-space-2) !important;
+  --sv-touch-target-min: 38px;
+}
+
+/* `.closeButton` (`OverlayHeader.module.css`) also carries its own
+   `margin-right: calc(-1 * (var(--sv-touch-target-min, 44px) -
+   var(--sv-icon-size-sm)) / 2)` — a *compensating* negative margin, tuned
+   against `OverlayHeader`'s own default row padding (--sv-space-4, 16px) so
+   the "×" glyph still sits close to the row's edge despite the button's own
+   much larger invisible touch-target box. Rescoping `--sv-touch-target-min`
+   above shrinks the box correctly, but this same margin formula still reads
+   the new, smaller value too — recalculating to -11px against *this* row's
+   own 8px padding (not the 16px it was tuned for) nets a *negative* overall
+   inset, pushing the button 3px past the panel's own right edge (measured
+   live: btn `right` 378 vs panel `right` 375 at 375px viewport) — the
+   overflowing focus-ring box the developer reported. Board's own trailing
+   button (`.mobileBoardOverlayHeader`'s "⋮", a plain `Button`, no
+   compensating-margin trick at all) sits exactly at the row's own 8px
+   padding with zero extra margin — neutralizing `.closeButton`'s margin
+   here reproduces that same, correct 8px inset instead of re-deriving a new
+   compensating value for this row's different padding. Descendant selector,
+   not a `titleClassName`-style prop, since this button has no dedicated
+   override slot of its own and — unlike the row/title — is never anything
+   other than this exact close button in this row (no back button, no
+   action slot used here). */
+.cardOverlayTitleRow button {
+  margin-right: 0 !important;
+}
+
+.cardOverlayTitleText {
+  font-size: var(--sv-font-size-md) !important;
+  font-weight: var(--sv-font-weight-semibold) !important;
+}
+
 /* height: 100% doesn't work here — PageContainer's own container box is
    deliberately height: auto (most pages have naturally tall, page-scrolling
    content), which breaks percentage-height propagation from .main (which

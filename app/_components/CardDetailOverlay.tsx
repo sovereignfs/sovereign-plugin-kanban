@@ -12,7 +12,6 @@ import {
   Textarea,
   useCommitOnEnterOrBlur,
   useIsMobile,
-  useOverlaySecondRow,
   useToast,
 } from '@sovereignfs/ui';
 import { deleteCard, updateCard } from '../actions';
@@ -68,12 +67,32 @@ export function CardDetailOverlay({
     router.push(closeHref ?? pathname);
   }
 
+  const list = board.lists.find((l) => l.id === cardDetail.listId);
+
   return (
     <Dialog
       open
       onClose={close}
       size={isMobile ? 'full' : 'xl'}
-      title={cardDetail.title}
+      // "<Board name> · <List name>", not the card's own title — mobile's
+      // full-screen Dialog otherwise covers `MobileBoardHeader` entirely,
+      // losing all board/list context while a card is open (developer-
+      // reported). The card's own title already renders once, editable, as
+      // the first thing in the scrollable body below (`CardHeader`) —
+      // showing it a second time here, non-editable and truncated, was pure
+      // duplication anyway. Desktop never shows this bar (`OverlayHeader`'s
+      // mobile-only CSS), so this only changes the mobile sticky title.
+      // `rowClassName`/`titleClassName` match this bar's padding/font-size
+      // to `MobileBoardHeader`'s own (`.mobileBoardOverlayHeader`/
+      // `.mobileBoardTitle`) — developer-requested, the two headers should
+      // read as the same chrome, not a bigger/bolder one layered underneath
+      // a smaller one. Deliberately keeps `OverlayHeader`'s own close
+      // button/position as-is (no `onBack`) — developer-requested no
+      // back-chevron here, just the existing "×" matching the rest of this
+      // Dialog's behavior.
+      title={list ? `${board.name} · ${list.name}` : board.name}
+      rowClassName={styles.cardOverlayTitleRow}
+      titleClassName={styles.cardOverlayTitleText}
       aria-label={cardDetail.title}
     >
       <div className={styles.cardOverlayBody}>
@@ -93,12 +112,7 @@ export function CardDetailOverlay({
         </div>
         <CardDescription card={cardDetail} />
         <CardChecklist card={cardDetail} />
-        <CardCommentsActivity
-          card={cardDetail}
-          board={board}
-          currentUser={currentUser}
-          isMobile={isMobile}
-        />
+        <CardCommentsActivity card={cardDetail} board={board} currentUser={currentUser} />
       </div>
     </Dialog>
   );
@@ -142,17 +156,16 @@ function CardHeader({
 
   return (
     // Sticky/bleed treatment is desktop-only (`.cardHeader` vs. the plain
-    // `.cardHeaderMobile`) — mobile already has its own permanently-pinned
-    // title bar via `Dialog`'s own mobile `OverlayHeader` (`title` prop,
-    // fed above), so sticking *this* in-body header too would duplicate
-    // it, and unlike on desktop that duplicate would now stay on screen
-    // continuously while scrolling instead of scrolling away once (caught
-    // live testing at a real 375px viewport before shipping this, not by
-    // report). Mobile also never had `Dialog`'s floating `.close` button
-    // to begin with (mobile hides it in favor of `OverlayHeader`'s own
-    // close affordance — `Dialog.module.css`'s mobile media query), so
-    // none of this header's close-button-clearance styling applies there
-    // either.
+    // `.cardHeaderMobile`) — mobile's pinned bar shows the board's name now
+    // (`Dialog`'s `title` prop, fed above), not this card's own title, so
+    // there's no duplicate title to avoid by keeping this one sticky too;
+    // it's still deliberately non-sticky, since this is the only place the
+    // card's own (editable) title appears at all and pinning it would
+    // permanently claim screen height a scrolling title doesn't need to.
+    // Mobile also never had `Dialog`'s floating `.close` button to begin
+    // with (mobile hides it in favor of `OverlayHeader`'s own close
+    // affordance — `Dialog.module.css`'s mobile media query), so none of
+    // this header's close-button-clearance styling applies there either.
     <div className={isMobile ? styles.cardHeaderMobile : styles.cardHeader}>
       <Textarea
         className={styles.cardTitleInput}
@@ -252,49 +265,42 @@ function CardHeader({
  * sections stacked together on desktop read as one long, low-signal scroll
  * (nothing marks where Comments ends and Activity begins beyond a section
  * label), and most of a card's activity log is redundant with what its
- * comments already say. On mobile the tab strip is still handed up to the
- * Dialog's own `OverlayHeader` second row (`useOverlaySecondRow`, the same
- * mechanism Account/Console use for their own tab strips) so it stays
- * pinned above the scrolling content instead of scrolling away with it —
- * desktop has no such header row to hand it to, so it renders inline here
- * instead, as an ordinary (non-sticky) first element.
+ * comments already say. The tab strip renders inline here, as an ordinary
+ * (non-sticky) element right before its own panels, the same on both
+ * surfaces — mobile previously hoisted it into `Dialog`'s `OverlayHeader`
+ * second row via `useOverlaySecondRow` so it stayed pinned above the
+ * scrolling content; developer-requested this match desktop's placement
+ * instead, so Comments/Activity sit with the rest of the card's content
+ * rather than permanently claiming header space.
  *
- * Both sections stay mounted at all times on *both* surfaces (toggled via a
- * CSS class, not conditional rendering) — unmounting the inactive one on
- * every switch would discard an in-progress, not-yet-submitted comment
- * draft the moment someone clicks over to Activity and back, undercutting
- * the "editing efficiency" this modal is supposed to prioritize
- * (CONCEPT.md) on either surface, not just mobile.
+ * Both sections stay mounted at all times (toggled via a CSS class, not
+ * conditional rendering) — unmounting the inactive one on every switch
+ * would discard an in-progress, not-yet-submitted comment draft the moment
+ * someone clicks over to Activity and back, undercutting the "editing
+ * efficiency" this modal is supposed to prioritize (CONCEPT.md).
  */
 function CardCommentsActivity({
   card,
   board,
   currentUser,
-  isMobile,
 }: {
   card: CardDetail;
   board: BoardData;
   currentUser: CurrentUser;
-  isMobile: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<'comments' | 'activity'>('comments');
 
-  const tabStrip = (
-    <Tabs
-      items={[
-        { label: 'Comments', value: 'comments' },
-        { label: 'Activity', value: 'activity' },
-      ]}
-      value={activeTab}
-      onChange={(value) => setActiveTab(value === 'activity' ? 'activity' : 'comments')}
-      aria-label="Card detail sections"
-    />
-  );
-  useOverlaySecondRow(isMobile ? tabStrip : null);
-
   return (
     <>
-      {!isMobile && tabStrip}
+      <Tabs
+        items={[
+          { label: 'Comments', value: 'comments' },
+          { label: 'Activity', value: 'activity' },
+        ]}
+        value={activeTab}
+        onChange={(value) => setActiveTab(value === 'activity' ? 'activity' : 'comments')}
+        aria-label="Card detail sections"
+      />
       {/* `.cardTabPanels`' own `min-height` (developer-requested) keeps the
           dialog from visibly resizing every time the active tab switches —
           Comments and Activity rarely have the same amount of content
