@@ -9,7 +9,6 @@ import {
   Input,
   Menu,
   SwipableMobileCarouselSlideBody,
-  SwipableMobileCarouselSlideHeader,
   Typography,
   useCommitOnEnterOrBlur,
   useToast,
@@ -86,22 +85,28 @@ export function MobileListSlide({
 
   return (
     <>
-      <SwipableMobileCarouselSlideHeader>
-        <MobileListHeader
-          list={list}
-          renaming={renaming}
-          onStartRename={() => setRenaming(true)}
-          onStopRename={() => setRenaming(false)}
-          menuOpen={menuOpen}
-          onMenuTrigger={() => setMenuOpen((v) => !v)}
-          onMenuClose={() => setMenuOpen(false)}
-          onDelete={() => setDeleteOpen(true)}
-          cardCount={cards.length}
-        />
-      </SwipableMobileCarouselSlideHeader>
-
       <SwipableMobileCarouselSlideBody className={styles.mobileListSlideScroll}>
         <div className={styles.mobileListBody}>
+          {/* Direct child of `.mobileListBody`, not `SwipableMobileCarouselSlideHeader`
+              — mirrors `ListColumn`'s own desktop placement (`.listHeader` inside
+              `.list`, both capped by the same box) rather than sitting above the
+              box on the plain canvas background (developer-reported: the header
+              read as detached from its own list's card container). The DS
+              carousel's header slot exists for content that must render before an
+              async body resolves (see `SwipableMobileCarouselSlideBody`'s own doc
+              comment) — irrelevant here, since `list`/`cards` both arrive as
+              already-resolved props, not fetched inside this component. */}
+          <MobileListHeader
+            list={list}
+            renaming={renaming}
+            onStartRename={() => setRenaming(true)}
+            onStopRename={() => setRenaming(false)}
+            menuOpen={menuOpen}
+            onMenuTrigger={() => setMenuOpen((v) => !v)}
+            onMenuClose={() => setMenuOpen(false)}
+            onDelete={() => setDeleteOpen(true)}
+            cardCount={cards.length}
+          />
           <div className={styles.mobileListCards}>
             {orderedCards.length === 0 && (
               <Typography variant="caption" className={styles.descriptionPlaceholder}>
