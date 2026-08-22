@@ -82,14 +82,20 @@ export function HomeView({
             <Typography variant="label" as="h2" className={styles.projectGroupLabel}>
               My projects
             </Typography>
-            {myProjects.map((project) => (
-              <ProjectSection
-                key={project.id}
-                project={project}
-                onNewBoard={() => setNewBoardFor(project)}
-                onManage={() => setManagingId(project.id)}
-              />
-            ))}
+            {myProjects.length === 0 ? (
+              <Typography variant="caption" className={styles.projectGroupEmpty}>
+                You haven&apos;t created a project yet
+              </Typography>
+            ) : (
+              myProjects.map((project) => (
+                <ProjectSection
+                  key={project.id}
+                  project={project}
+                  onNewBoard={() => setNewBoardFor(project)}
+                  onManage={() => setManagingId(project.id)}
+                />
+              ))
+            )}
           </div>
 
           <div className={styles.projectGroup}>
@@ -155,9 +161,15 @@ function ProjectSection({
       aria-label={project.name}
     >
       <div className={styles.projectHeader}>
-        <Typography variant="h3" as="h2">
-          {project.name}
-        </Typography>
+        <div className={styles.projectTitleRow}>
+          <Typography variant="h3" as="h2">
+            {project.name}
+          </Typography>
+          <Typography variant="caption">
+            {countLabel}
+            {isOwner ? '' : ' · shared with you'}
+          </Typography>
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -167,10 +179,6 @@ function ProjectSection({
         >
           <Icon name="settings" size="xs" aria-hidden={true} />
         </Button>
-        <Typography variant="caption">
-          {countLabel}
-          {isOwner ? '' : ' · shared with you'}
-        </Typography>
       </div>
 
       <div className={styles.projectGrid}>

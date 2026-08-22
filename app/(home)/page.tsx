@@ -1,9 +1,10 @@
 import { sdk } from '@sovereignfs/sdk';
-import { PageContainer } from '@sovereignfs/ui';
+import { PageContainer, PageHeader } from '@sovereignfs/ui';
 import { HomeView } from '../_components/HomeView';
 import { requireUser } from '../_lib/authz';
 import { getDb } from '../_lib/db';
 import { getHomeData } from '../_lib/queries';
+import styles from '../kanban.module.css';
 
 export default async function KanbanHomePage() {
   const actor = await requireUser();
@@ -13,6 +14,10 @@ export default async function KanbanHomePage() {
 
   return (
     <PageContainer maxWidth="lg">
+      {/* Same `PageHeader` DS component the sibling Inbox page already uses
+          (`(home)/inbox/page.tsx`) — this page never had one, so it read as
+          a bare list with no page-level title (developer-reported). */}
+      <PageHeader title="Kanban" headingLevel={1} className={styles.homePageHeader} />
       <HomeView projects={projects} currentUser={currentUser} />
     </PageContainer>
   );
