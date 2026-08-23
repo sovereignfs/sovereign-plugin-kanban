@@ -287,7 +287,7 @@ export function BoardView({
                       items={[{ label: 'Settings', icon: 'settings', onSelect: () => setSettingsOpen(true) }]}
                       onSelect={(entry) => {
                         setBoardMenuOpen(false);
-                        entry.onSelect();
+                        entry.onSelect?.();
                       }}
                     />
                   </Popover>

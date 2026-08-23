@@ -235,7 +235,7 @@ function ListHeader({
             ]}
             onSelect={(entry) => {
               onMenuClose();
-              entry.onSelect();
+              entry.onSelect?.();
             }}
           />
         </Popover>
