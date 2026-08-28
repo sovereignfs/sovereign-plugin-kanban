@@ -6,6 +6,7 @@ import { KanbanMobileFooter, type MobileAppEntry } from './_components/KanbanMob
 import { KanbanMobileHeader } from './_components/KanbanMobileHeader';
 import { requireUser } from './_lib/authz';
 import { getDb } from './_lib/db';
+import { registerPortabilityHandlers } from './_lib/portability';
 import { hasUnseenInboxActivity } from './_lib/queries';
 import styles from './kanban.module.css';
 
@@ -49,6 +50,16 @@ import styles from './kanban.module.css';
  * this plugin moved off `shell: default` and lost the platform's provider.
  */
 export default async function KanbanLayout({ children }: { children: ReactNode }) {
+  // In-process and reset on restart — the platform SDK requires
+  // re-registering from a request-scoped plugin route, so this runs on
+  // every request. Best-effort: a registration failure must not block the
+  // plugin's own UI (matches Docs'/Sheets' layout.tsx).
+  try {
+    await registerPortabilityHandlers();
+  } catch {
+    // Portability is a best-effort platform integration.
+  }
+
   const actor = await requireUser();
   const db = await getDb();
   const [hasUnseenInbox, availablePlugins, session, instanceName] = await Promise.all([
