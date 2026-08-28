@@ -7,6 +7,43 @@
 
 ## Status
 
+**Account deletion handler (K.23, `sdk.portability.provideDelete()`) — a
+standalone platform-integration task, not part of the Phase 1/2 feature
+numbering above.** This plugin registered no deletion handler at all
+despite real project/board owner-collaborator models — a deleted user's
+projects, boards, and cards were silently left in place, protected only by
+the platform's default fallback for unregistered plugins, not by design.
+Found via a cross-plugin platform research survey (research doc 0020 in
+the platform monorepo, prompted by the sibling Tally plugin's own
+joint-data deletion concerns). New `app/_lib/portability.ts`, wired into
+`app/layout.tsx`'s existing layout in a best-effort `try/catch`: two loops
+(boards, then projects — the project loop's own nested-ownership check
+below depends on the board loop having already run), then the user's own
+`kanban_inbox_state` row. Boards: a plain member departing loses just
+their own membership and card assignments (mirrors `removeBoardMember`'s
+own cleanup exactly); an owner departing transfers to a remaining member
+if one exists; a board with no member left is hard-deleted, and the
+existing `onDelete: 'cascade'` FKs (`schema.ts`) handle every dependent
+table for free — unlike Docs'/Sheets' equivalent fixes, no manual
+per-table cleanup was needed here. Projects: a plain member or a co-owner
+stepping down while another owner remains is a plain removal
+(`countProjectOwners`'s own invariant); the last owner departing with
+other members present promotes the earliest-joined one
+(`updateProjectMemberRole`'s own promote path); a **sole** project member
+departing checks — before hard-deleting the project, which would cascade
+every board under it away — whether any board under the project is still
+independently owned by someone with **no project-level membership at
+all**, reachable because `removeProjectMember` deliberately never
+cascades to board membership (its own doc comment says so); if found,
+that person is promoted into the project instead of cascading, saving
+every board under it, not just the one they happen to own. Tested against
+the real generated migrations on an ephemeral libsql DB
+(`app/_lib/__tests__/portability.test.ts`, this plugin's own established
+convention per `app/__tests__/actions.test.ts`, not a hand-rolled fake) —
+9 new tests, including the nested-ownership case above, all passing; a
+clean `pnpm typecheck`/`pnpm exec eslint`/`pnpm exec prettier --check`/
+`pnpm design:tokens:check`.
+
 ✅ Phase 1 complete — K.1–K.16 shipped. 🚧 Phase 2 in progress — K.17–K.19
 shipped, manifest at `0.24.0`; K.20 partially shipped within an earlier
 version (see its own entry below and the ⬜/✅ breakdown in K.20's own
@@ -40,7 +77,7 @@ feedback. Summary of what changed and why, newest decision first:
   Kanban-scoped; the "looks Kanban-only" impression was a dev-data
   artifact — every notification row in this dev environment happened to be
   Kanban-sourced (`select source, count(*) from notifications group by
-  source` → 100% `fs.sovereign.kanban`/`io.openfs.kanban`/`unknown`, zero
+source` → 100% `fs.sovereign.kanban`/`io.openfs.kanban`/`unknown`, zero
   rows from any other plugin). Confirmed by directly reviewing the real
   platform header (`runtime/app/(platform)/layout.tsx`) and the one
   `shell: default` mobile-header POC in the repo
@@ -55,7 +92,7 @@ feedback. Summary of what changed and why, newest decision first:
   we need to extend sdk I believe"): extended `@sovereignfs/sdk` itself**
   rather than having the plugin fetch a platform-internal REST route by
   URL. New `sdk.notifications.list()/markRead()/markAllRead()/dismiss()/
-  dismissAll()` (packages/sdk `1.44.0` → `1.45.0`, additive/non-breaking),
+dismissAll()` (packages/sdk `1.44.0` → `1.45.0`, additive/non-breaking),
   backed by a new `runtime/src/notification-permissions.ts`
   (`requireNotificationsPluginContext`, mirroring
   `requireJobsPluginContext`/`requireCryptoPluginContext`'s exact
@@ -88,13 +125,13 @@ feedback. Summary of what changed and why, newest decision first:
 
 - **A real bug found live, not by any check that runs in isolation**: the
   bell's trigger `onClick` originally called `setOpen((o) => { if (!o) void
-  fetchNotifications(...); return !o; })` — nesting the (now real) server-
+fetchNotifications(...); return !o; })` — nesting the (now real) server-
   action call inside a functional state-updater callback. This throws
   "Cannot update a component (Router) while rendering a different
   component" on every single mount, not just on click (the mount-time
   `useEffect` hits the same `fetchNotifications` path). Root-caused by
   isolating it in a **fresh browser tab with no HMR history** — the same
-  symptom persisted across a full dev-server restart in the *original* tab,
+  symptom persisted across a full dev-server restart in the _original_ tab,
   which briefly looked like the actual bug, before a brand-new tab showed
   zero errors on the exact same code, revealing the original tab's
   webpack module graph was itself stale from many rapid edits. A
@@ -104,7 +141,7 @@ feedback. Summary of what changed and why, newest decision first:
   the actual, verified fix is reading `open` from the closed-over variable
   and calling the action as a plain, un-nested side effect:
   `const willOpen = !open; setOpen(willOpen); if (willOpen) void
-  fetchNotifications(...)`. Documented in the component's own doc comment
+fetchNotifications(...)`. Documented in the component's own doc comment
   at the exact call site so this isn't silently re-broken later.
 
 - **Stale legacy dev data removed**: "fs.sovereign.kanban is the correct
@@ -121,11 +158,11 @@ feedback. Summary of what changed and why, newest decision first:
   explicitly); bell icon `size="md"` (20px) → `size="lg"` (24px, matching
   the real bell's hardcoded `width="24" height="24"` inline SVG exactly,
   not a DS token that happened to be close); avatar `avatarSize="sm"`
-  (24px) → `"md"` (32px, matching the *desktop* header's own already-
+  (24px) → `"md"` (32px, matching the _desktop_ header's own already-
   established avatar size — same component, same size, same styles as the
   other place in this plugin it's already used, not a third new size);
   notification popup `Popover` given an explicit `panelStyle={{ maxHeight:
-  480 }}` to match the real panel's fixed cap (`Popover`'s own dynamic
+480 }}` to match the real panel's fixed cap (`Popover`'s own dynamic
   viewport-fit `maxHeight` could otherwise produce a taller or shorter
   panel depending on where the trigger sits on screen).
 
@@ -134,7 +171,7 @@ feedback. Summary of what changed and why, newest decision first:
   panel's close (✕) button (was missing entirely — only outside-
   click/Escape closed it before), the bold "Notifications" title treatment
   (was an uppercase small label, now `font-size: sm`/`weight: 600`/`color:
-  text-primary`, token-for-token off the real `.headerTitle`), and — the
+text-primary`, token-for-token off the real `.headerTitle`), and — the
   category icon/color treatment per notification item (green circle for
   user/invite/join, amber for security/warning, neutral gray otherwise,
   mapped onto this repo's own curated icon set: `user-round-plus`/
@@ -143,11 +180,11 @@ feedback. Summary of what changed and why, newest decision first:
   curated list and the set is deliberately kept small). Every size/spacing
   value in the new `.notification*` CSS block was copied token-for-token
   from the real `runtime/app/(platform)/_components/
-  NotificationBell.module.css` (32px category-icon circle, 7px unread dot,
+NotificationBell.module.css` (32px category-icon circle, 7px unread dot,
   20px dismiss button, same padding scale), not eyeballed. **Last fix in
   this round**: the trigger button had no "panel is open" visual state at
   all — the real `.trigger`/`.triggerActive` pair shows a muted icon color
-  at rest, full-contrast on hover, and a *persistent* `--sv-color-border`
+  at rest, full-contrast on hover, and a _persistent_ `--sv-color-border`
   background specifically while the panel is open (not just on hover).
   Added the missing `.mobileHeaderIconButtonActive` class, applied via
   `open ? styles.mobileHeaderIconButtonActive : ''`, and switched the base
@@ -155,7 +192,7 @@ feedback. Summary of what changed and why, newest decision first:
   genuine gap, not a screenshot-compression illusion (the avatar's own
   apparent "missing border" in the same comparison screenshot was checked
   computationally — `getComputedStyle` showed `border: 1px solid rgb(24,
-  24, 27)`, an exact match to the real `.avatar`'s own token value — and
+24, 27)`, an exact match to the real `.avatar`'s own token value — and
   concluded to be a real gap nowhere, just image compression).
 
 Verified live end-to-end after every round above, always in a fresh browser
@@ -187,7 +224,7 @@ all, so a page's brand/notifications/account identity was reachable on
 mobile exclusively through the footer's Apps drawer. Clarified with the
 developer up front (`shell: minimal` means there's no real horizontal
 "Platform Header" to literally compose into — the platform's own desktop
-chrome is a sidebar, and its own *mobile* header lives in
+chrome is a sidebar, and its own _mobile_ header lives in
 `runtime/app/(platform)/layout.tsx`, unreachable from this plugin): the new
 `KanbanMobileHeader` mirrors that real platform mobile header's shape 1:1
 — same `@sovereignfs/ui` `MobileHeader` component, same three-slot
@@ -200,7 +237,7 @@ duplicate it).
 `bell` points at this plugin's own Inbox (`/kanban/inbox`) — the closest
 equivalent to the real platform's cross-plugin notification feed available
 to a `shell: minimal` plugin — reusing the exact same `hasUnseenInboxActivity`
-unseen-dot data point the mobile *footer's* own Inbox icon already used, not
+unseen-dot data point the mobile _footer's_ own Inbox icon already used, not
 a second "unseen" concept. `avatarMenu` is `KanbanAccountMenu`, a new
 component extracted from `KanbanHeader.tsx`'s previously-inline account
 Popover/Avatar/Icon dropdown (same DS primitives, same menu content — user
@@ -427,7 +464,7 @@ theme-reactive value is unchanged in that case — verified live.
 not a plugin-local literal — reusing the DS's own `--sv-grey-950`/
 `--sv-grey-50` primitives would have violated "plugins reference semantic
 tokens, never primitives directly," so this promoted the actual need (a
-guaranteed-contrast pair for text painted on a *plugin-supplied literal*
+guaranteed-contrast pair for text painted on a _plugin-supplied literal_
 background, independent of the app's own light/dark theme) into the design
 system instead of reaching around it. Declared once at `:root` only, not
 repeated under `[data-theme='dark']` — same "reads the same regardless of
@@ -469,15 +506,16 @@ able to hard-break.
 `Textarea`'s base styling fighting the header's flex layout — the old
 `Input`-based version never hit either, since `Input` behaves differently
 in both respects:
+
 1. `Textarea.module.css`'s own `width: 100%` acts as the flex item's
    main-size hint in a way `Input`'s did not, so the title tried to claim
    the whole row width for itself, pushing the delete button onto its own
    line below a wrapped title. Fixed by restoring a `width: auto
-   !important` override (`.cardTitleInput`) — present before for a
+!important` override (`.cardTitleInput`) — present before for a
    different reason (fighting `Input.module.css`'s fixed `height: 36px`),
    repurposed here.
 2. With `align-items: center` (the row's existing alignment), a wrapped
-   multi-line title re-centered the delete button against the *whole*
+   multi-line title re-centered the delete button against the _whole_
    grown block on every keystroke, drifting it away from `Dialog`'s own
    `.close` button, which stays fixed top-right regardless of content
    height — perfectly aligned for one line, visibly detached by two.
@@ -485,7 +523,7 @@ in both respects:
    title itself is unaffected — always the row's tallest item, so its own
    top position is identical either way) and adding a new
    `.cardHeaderDeleteButton` class (`align-self: flex-start; margin-top:
-   calc(var(--sv-space-1) * 1.5)`) tuned live via `getBoundingClientRect()`
+calc(var(--sv-space-1) * 1.5)`) tuned live via `getBoundingClientRect()`
    to match `.close`'s vertical center for a single-line title. Re-verified
    with a real 2-line title afterward: delete-button/close-button centers
    landed within 1px of each other, same as the single-line case — the fix
@@ -501,7 +539,7 @@ the modal left the Labels/Due date/Assignees row floating on top of the
 sticky header instead of sliding underneath it.** Not a missing
 background (there is one) — a stacking-context bug. `.cardMetaRow`'s
 controls are each built on `Popover` (`packages/ui`), whose container is
-`position: relative`, making it a *positioned* box that competes directly
+`position: relative`, making it a _positioned_ box that competes directly
 with the header's own `z-index: 0` stacking level instead of sitting
 safely below it as plain static content would — and since it renders
 later in the DOM, tree order broke the tie in its favor. Fixed by bumping
@@ -545,7 +583,7 @@ dialog every click, since the two panels rarely have the same content
 length. Added `.cardTabPanels { min-height: 14rem; }` around both panels
 (kept mounted at all times, toggled via a CSS class — not conditional
 rendering, so an in-progress comment draft survives a tab switch) — stops
-the *common* short-content jump without making the dialog truly
+the _common_ short-content jump without making the dialog truly
 fixed-height; content taller than the reserved minimum still grows it,
 same as the dialog's own content-driven-height behavior everywhere else.
 (3) **Multi-line description/comment rendering bug, found from developer
@@ -649,7 +687,7 @@ specifically for "nothing here yet," not for real content. Checklist's
 "+ Add an item" was plain muted ghost-button text with no visual
 container, reading as inert label copy rather than a clickable row —
 given the same dashed-bordered-row treatment via a new
-`.checklistAddTrigger` class *added alongside* (not replacing)
+`.checklistAddTrigger` class _added alongside_ (not replacing)
 `.addCardTrigger`, since that class is shared with `QuickAddCard`'s
 list-footer "+ Add a card" trigger, deliberately left untouched (out of
 scope, not something flagged). Verified live end-to-end at both `xl`
@@ -682,12 +720,12 @@ the existing `sm`/`full` coverage. `CardDetailOverlay.tsx`'s own
 "weird alignment" with the close button.** Root-caused via
 `getBoundingClientRect()`, not eyeballed: `Input`'s own base CSS sets
 `width: 100%` unconditionally, which — as a flex item inside `.cardHeader`
-(`flex: 1 1 auto`) — fought that sizing and claimed the *entire* row for
+(`flex: 1 1 auto`) — fought that sizing and claimed the _entire_ row for
 itself, wrapping the ellipsis "Card options" button onto its own line
 below the title (visible live: two rows instead of one, throwing off
 every alignment downstream, matching the screenshot). Measured the actual
 title box before touching anything: `titleInput.right` (828px) landed
-20px *inside* the close button's own span (808–840px) — a real box
+20px _inside_ the close button's own span (808–840px) — a real box
 underlap, not a visual illusion. Fixed with `width: auto !important` +
 `min-width: 0` on `.cardTitleInput` (letting `flex: 1 1 auto` govern
 sizing the way it does for every other flex-embedded control in this
@@ -756,11 +794,11 @@ updating outside the plugin: `RESERVED_API_SEGMENTS`
 (`runtime/src/api-namespace.ts`) only governs `/api/*` first-segments, has
 nothing to do with plugin page routes, and no middleware/`next.config`
 reference this path pattern either. Historical `Status`-section narrative
-entries elsewhere in this file that cite the *old* path (K.7's drag
+entries elsewhere in this file that cite the _old_ path (K.7's drag
 verification log, K.9's own share-dialog writeup, the two production
 incident entries under `0.17.x`, etc.) were deliberately left unchanged —
 they're accurate records of what was true when they were written, not a
-live reference; only genuinely load-bearing *current* documentation (the
+live reference; only genuinely load-bearing _current_ documentation (the
 `## Routes` table, K.6's own review checklist, this file's own
 "Notification URLs deep-link to…" line) was updated to the new path.
 Verified live end-to-end: board-tile links, the copy-link field, and both
@@ -817,7 +855,7 @@ check, so a genuinely nonexistent user still gets "could not be found,"
 not a message implying they exist but lack project access) rejecting
 anyone who isn't already a project member with "Add them to the project
 first." — an action is a public POST endpoint dispatched by action id per
-this file's own header docstring, so a picker that only *offers*
+this file's own header docstring, so a picker that only _offers_
 project members would still leave a forged or scripted direct call able
 to hand board access to a total stranger. This rippled through roughly a
 dozen existing K.9 tests that added a board member without first adding
@@ -856,7 +894,7 @@ typecheck + lint + design-tokens + prettier, `@sovereignfs/ui` 436/436
 vitest + typecheck. Manifest bumped `0.20.2` → `0.20.3` — a minor-shaped
 change in substance (new server action, new authz check, new DS icon) kept
 inside the `0.20.x` line rather than jumping to the `0.21.0` slot
-`ROADMAP.md` reserves for K.20's *full* completion, since two of that
+`ROADMAP.md` reserves for K.20's _full_ completion, since two of that
 task's three deliverables (board-owner-parity, visibility toggle) remain
 unshipped — see K.20's own task section for the itemized breakdown.
 
@@ -870,9 +908,9 @@ and ballooned out on the right, reading as visibly lopsided. Worked out
 the general constraint this whole class of fix is bound by: hitting an
 exact target gap (here, 8px, matching the row's other gaps) while keeping
 the box's own edge clear of its neighbor's requires `padding ≤ gap` —
-with the *default* ghost `Button` padding (12px) bigger than the flex gap
+with the _default_ ghost `Button` padding (12px) bigger than the flex gap
 (8px), no margin value can satisfy both non-overlap and an exact 8px match
-while padding stays symmetric; that's *why* the first two attempts each
+while padding stays symmetric; that's _why_ the first two attempts each
 sacrificed a different thing (attempt 1: overlapped; attempt 2:
 asymmetric). Landed on a third version that reduces the padding itself
 (symmetric, `--sv-space-1` = 4px both sides — safely ≤ the 8px gap) via a
@@ -900,12 +938,12 @@ hover screenshot**: developer reported the ellipsis trigger's hover
 background visibly cut into a corner of the Share button beside it.
 Measured directly via `getBoundingClientRect()` before touching anything —
 confirmed a real, non-visual overlap: the ellipsis button's own box
-started 4px to the *left* of Share's right edge (`ellipsisRect.left −
+started 4px to the _left_ of Share's right edge (`ellipsisRect.left −
 shareRect.right = −4`), not just a perceived crowding. Root cause was an
 existing fix (`.boardOptionsMenu`'s `margin-left:
-calc(-1 * var(--sv-space-3))`) that aligned the ellipsis *glyph* correctly
+calc(-1 * var(--sv-space-3))`) that aligned the ellipsis _glyph_ correctly
 (matching the row's other 8px gaps) but did so by shifting the trigger's
-*whole box* left by its own horizontal padding (12px) — since that padding
+_whole box_ left by its own horizontal padding (12px) — since that padding
 (12px) is bigger than the flex `gap` it was shifting into (8px), the box
 was mathematically guaranteed to intrude 4px into the space before it,
 regardless of how carefully the margin value was chosen. Fixed by zeroing
@@ -977,7 +1015,7 @@ geometry bug — `getBoundingClientRect()`/`getComputedStyle()` confirmed
 each avatar was already an exact 28×28 `border-box` square with
 `border-radius: 50%`, a true circle — the perceived distortion was almost
 certainly the overlap cutout itself (the front avatar's ring notching out
-part of the one behind it) reading as *less* circular at a small, hand-
+part of the one behind it) reading as _less_ circular at a small, hand-
 tuned 28px than it would at a standard size. Three changes: (1) the
 stack now returns `null` below 2 members (`MemberAvatarStack` in
 `BoardView.tsx`) — solo-owned boards (the common case for a new board)
@@ -986,7 +1024,7 @@ the same "who's here" job; verified live on a real solo board (Test
 Board) that the stack is absent entirely, only Share and the ellipsis
 remain. (2) Since the case that justified the hand-tuned 28px (`Avatar`'s
 own `md` at 32px "reads too big packed this tightly") was reasoned
-against a *dense*, always-visible stack — no longer true once it's gated
+against a _dense_, always-visible stack — no longer true once it's gated
 to 2+ real members — switched to `Avatar`'s plain built-in `size="md"`
 (32px) instead of a custom width/height override, removing a magic-number
 CSS rule and directly satisfying "bigger" against an existing size step
@@ -1047,7 +1085,7 @@ addition `.boardToolbar` didn't need: `.content`'s `padding:
 var(--sv-space-6)` (from `Dialog.module.css`) means the header has to
 bleed out to the panel's edges (`margin: calc(-1 * var(--sv-space-6))` on
 top/left/right) and restore its own padding, and sticky's `top` offset has
-to be the *negative* of that same padding value (not `0`) since the
+to be the _negative_ of that same padding value (not `0`) since the
 offset is measured against the scroll container's padding box, not where
 the negative margin visually moved the element — the standard "sticky
 header inside a padded scroll container" recipe. Background set to
@@ -1076,23 +1114,24 @@ or below to soften it). This is a `@sovereignfs/ui` fix, not a kanban-local
 one — `Dialog` is a shared component every plugin's dialogs render
 through, and this codebase already has an established slim, token-colored
 scrollbar pattern (`ScrollArea`, `MessageScroller`: `scrollbar-width: thin`
-+ `scrollbar-color`/`::-webkit-scrollbar-thumb` with
-`--sv-color-border-strong`) that `Dialog.module.css`'s `.content` simply
-hadn't adopted yet. Applied the identical pattern there (`packages/ui`,
-now `0.57.1` — patch, purely additive CSS, no API change, so no
-`docs/upgrade.md` note needed per NFR-04). Left `.content`'s existing
-`overscroll-behavior: none` untouched — that's a deliberate, documented
-iOS-bounce fix unrelated to scrollbar appearance. Verified live at a
-1280×640 viewport (approximating a real 13" laptop's cramped browser inner
-height once chrome/tabs are subtracted): `getComputedStyle()` confirmed
-`scrollbar-width: thin` and the token color actually apply, against a
-`.content` region that genuinely overflows (784px content vs. 574px
-available) — a real scroll case, not simulated. Full check suite clean
-across both affected packages: `@sovereignfs/ui` typecheck + 436/436
-vitest, kanban plugin's own 99/99 vitest, `pnpm design:tokens:check`,
-prettier. No Storybook update needed (no new component, no prop/API
-change — Dialog already has no story file in this repo, so nothing to
-touch there either way).
+
+- `scrollbar-color`/`::-webkit-scrollbar-thumb` with
+  `--sv-color-border-strong`) that `Dialog.module.css`'s `.content` simply
+  hadn't adopted yet. Applied the identical pattern there (`packages/ui`,
+  now `0.57.1` — patch, purely additive CSS, no API change, so no
+  `docs/upgrade.md` note needed per NFR-04). Left `.content`'s existing
+  `overscroll-behavior: none` untouched — that's a deliberate, documented
+  iOS-bounce fix unrelated to scrollbar appearance. Verified live at a
+  1280×640 viewport (approximating a real 13" laptop's cramped browser inner
+  height once chrome/tabs are subtracted): `getComputedStyle()` confirmed
+  `scrollbar-width: thin` and the token color actually apply, against a
+  `.content` region that genuinely overflows (784px content vs. 574px
+  available) — a real scroll case, not simulated. Full check suite clean
+  across both affected packages: `@sovereignfs/ui` typecheck + 436/436
+  vitest, kanban plugin's own 99/99 vitest, `pnpm design:tokens:check`,
+  prettier. No Storybook update needed (no new component, no prop/API
+  change — Dialog already has no story file in this repo, so nothing to
+  touch there either way).
 
 **Five `ManageProjectDialog` UX issues, reported together from a
 screenshot**: (1) No visible title — `Dialog`'s own `title` prop only
@@ -1172,7 +1211,7 @@ built from scratch. Prompted by developer feedback that the icon-only
 trigger felt visually inconsistent with Board View's labeled Share button
 one level down; the fix wasn't to match that specific button (a labeled
 `variant="secondary"` button repeated per project row would be too heavy
-for a list), but to reuse the *closest real precedent* for "small
+for a list), but to reuse the _closest real precedent_ for "small
 icon-only management trigger" already in this codebase, trading a few
 pixels of size (the DS's own `sm` padding, ~28–36px vs. the previous
 hand-tuned 20px) for real componentry — actual hover/focus/pressed states
@@ -1187,7 +1226,7 @@ the icon (name→icon and icon→caption both read roughly double the row's
 intended rhythm). Same root cause `.boardOptionsMenu` already documents
 one level down: `.projectHeader`'s flex `gap` is structurally correct, but
 ghost `Button`'s own horizontal padding (`--sv-space-3`) insets the glyph a
-further step inside its own invisible button box, so the *visible* gap on
+further step inside its own invisible button box, so the _visible_ gap on
 each side reads as `gap + padding`, not just `gap`. Fixed with the exact
 same fix, reused rather than reinvented: `margin-left`/`margin-right:
 calc(-1 * var(--sv-space-3))` on `.projectManageButton`, cancelling the
@@ -1196,7 +1235,7 @@ unlike the board-level one which only needed one side compensated).
 Verified live with a direct `getBoundingClientRect()` measurement, not
 just eyeballed — 0px external gap on both sides across all four project
 rows (Product Launch, Platform Engineering, Marketing, Test Project),
-meaning the *glyph* itself now sits exactly `--sv-space-3` from the
+meaning the _glyph_ itself now sits exactly `--sv-space-3` from the
 adjacent text on both sides, matching every other gap in the row.
 
 **Still too loose per developer follow-up feedback** (a screenshot showing
@@ -1234,7 +1273,7 @@ space below it (divider→"My projects"). Root cause: `.sidebarGroup`
 already carried its own `margin-top: var(--sv-space-4)` (16px, predating
 the divider — originally what separated the top nav from "My projects" at
 all), so the space below the divider was stacking three things (the
-sidebar's own flex `gap`, the divider's own `margin-bottom`, *and* this
+sidebar's own flex `gap`, the divider's own `margin-bottom`, _and_ this
 group's `margin-top`) while the space above only had two. Fixed with a
 `.sidebarGroupAfterDivider` modifier (`margin-top: 0`) applied to "My
 projects" specifically — "Shared with me" (no divider directly above it)
@@ -1271,7 +1310,7 @@ listing get the same A–Z order for free, no duplicate sort logic.
 
 **The sidebar-alignment fix from the entry above had to move**: introducing
 `.projectGroup` as a wrapper changes what `.projectSection:first-of-type`
-matches — it now correctly means "first section within *each* group"
+matches — it now correctly means "first section within _each_ group"
 (both groups' first section, not just the page's first section overall).
 The negative-margin compensation moved to `.projectGroup:first-of-type`
 instead, and `.projectSection:first-of-type` reverted to its original,
@@ -1286,7 +1325,7 @@ sort comparator changed, no authz/action code touched).
 underlying cause)**: `.body` (`app/layout.tsx`) is the shared scroll
 boundary for every page — Board View and Home alike — but on Home,
 `.sidebar` and `.main` are both inside it via `.contentRow`, so `.body`'s
-scroll carried the *whole row*, including the sidebar, instead of just
+scroll carried the _whole row_, including the sidebar, instead of just
 `.main`'s content. A first attempt fixed this with `.sidebar { position:
 sticky; top: 0; }`, reasoning that `.contentRow`'s inherited `align-items:
 stretch` would size `.sidebar` to match `.main`'s full (taller) content,
@@ -1297,7 +1336,7 @@ developer reported directly, from a real screenshot, that the sidebar
 still scrolled away and the border-right still ended partway. Re-testing
 with an actual max-scroll (`main.scrollTop = main.scrollHeight`, not just
 a small forced overflow) showed the sticky sidebar's real height only
-tracked the *viewport* (352px), not the full content — so sticky ran out
+tracked the _viewport_ (352px), not the full content — so sticky ran out
 of room and the sidebar scrolled itself fully off-screen (`top: -352`
 measured). Fixed properly by abandoning `position: sticky` entirely for
 the standard two-independent-scroll-panes architecture: `.contentRow`
@@ -1519,7 +1558,7 @@ this. Full suite: 90/90 tests passing (84 Phase 1 + 6 new K.18 authz
 tests), typecheck and lint clean, no `pnpm-lock.yaml` drift.
 
 **Known, deliberate gap until K.21 ships**: a `'viewer'` board renders with
-the *same* editable UI as a real member today — no read-only mode exists
+the _same_ editable UI as a real member today — no read-only mode exists
 yet. Attempting a mutation is correctly denied server-side (the edit gates
 above), but the UX (a button that silently fails or throws a toast) is
 confusing until K.21's read-only mode lands. This is the explicit
@@ -1712,7 +1751,7 @@ comparison skip untouched tiles. Measured ~1520–1527ms after (consistent
 across two runs), a real but modest ~18% improvement, not the dramatic fix
 initially hoped for: `useSortable()` subscribes to dnd-kit's shared
 drag-state context internally, so every sortable item still re-renders via
-its *own* hook subscription on each drag frame regardless of `memo` on its
+its _own_ hook subscription on each drag frame regardless of `memo` on its
 wrapper — `memo` only blocks parent-triggered re-renders, not this class.
 The remaining ~1.5s at 200 cards (dev mode) is a known dnd-kit
 characteristic at scale; closing it fully would mean list virtualization, a
@@ -1749,7 +1788,7 @@ update rather than a hydration diff. This also incidentally closes a
 second, separate hydration risk in `timeAgo()`'s own >30-day fallback
 branch, which formats an absolute date via `Intl.DateTimeFormat(undefined,
 ...)` — locale-dependent, so a server whose Node locale differs from the
-client browser's could mismatch there too; deferring the *entire* label to
+client browser's could mismatch there too; deferring the _entire_ label to
 post-mount sidesteps that class of bug as well, not just the relative-
 bucket one, without needing a second fix. All three call sites (`
 CardActivity`, `CardComments`, and `InboxFeedList` — the last a plain
@@ -1757,7 +1796,7 @@ Server Component with no `'use client'` of its own; rendering `TimeAgo` as
 a child needs none, standard RSC composition) now go through this one
 component rather than calling `timeAgo()` directly. `time.ts`'s own
 `timeAgo()` function is unchanged — still the plain, correct-as-a-pure-
-function utility; only how it gets *rendered* needed fixing, matching how
+function utility; only how it gets _rendered_ needed fixing, matching how
 the bug was actually diagnosed.
 
 Verified live across three separate fresh browser tabs (this session's
@@ -1804,7 +1843,7 @@ be off-screen. Reorder itself mirrors `BoardView`'s existing
 horizontal gesture) — `touch-action` is evaluated declaratively at
 `touchstart`, before any JS (including dnd-kit's own delay-based
 activation-constraint decision) runs, so `none` on the element a swipe
-*starts* on would tell the browser to skip its own native scroll-snap
+_starts_ on would tell the browser to skip its own native scroll-snap
 handling for that whole gesture regardless of whether dnd-kit ultimately
 activates a drag or cancels — silently breaking the carousel swipe on every
 touch that happens to start on top of a card (most of a slide's area).
@@ -1847,13 +1886,13 @@ it). Long-press-drag reorder was verified via synthetic `TouchEvent`
 dispatch (`touchstart`/`touchmove`/`touchend` with real ~350ms holds,
 constructed after reading dnd-kit's own source to get two details right
 that a naive test would have gotten wrong: (1) dnd-kit attaches its
-move/end listeners directly to the *original* `touchstart` target, not
+move/end listeners directly to the _original_ `touchstart` target, not
 `document` — matching the real Touch Events API's own no-retargeting
 behavior — so move/end events must be dispatched on that same original
 element, not wherever the finger is now; (2) the delay-based activation
 constraint uses `setTimeout`, confirmed by first observing the dragged
 card's `opacity` flip to `0.4` and `aria-pressed="true"` after the hold,
-*before* sending any move, isolating activation from the move/reorder logic
+_before_ sending any move, isolating activation from the move/reorder logic
 as two separately-verified steps rather than one combined guess). The full
 sequence correctly re-ordered two cards in the DOM, and a
 `POST /kanban/boards/…` (the `moveCard` server action) was confirmed in the
@@ -1940,7 +1979,7 @@ consistently reported `document.visibilityState === "hidden"` (confirmed
 via direct query) regardless of which tab was created or selected, meaning
 neither a real `element.focus()` call nor a `computer`-tool synthesized
 click ever actually moved `document.activeElement` — a background-tab
-browser restriction, not an application bug. The *identical* commit
+browser restriction, not an application bug. The _identical_ commit
 path via Enter (`onKeyDown`, which doesn't depend on focus state at all)
 was verified end-to-end with the same value-injection technique — typed a
 new title, dispatched Enter, reloaded the page fresh, and the rename had
@@ -2081,7 +2120,7 @@ the start of the mobile phase. `KanbanMobileFooter.tsx` (client) renders
 `router.push` `onClick` rather than `FooterIcon`'s `href`, preserving
 client-side navigation — same reasoning as the platform's own `MobileNav`)
 plus `MobileAppsDrawer` for the center "Apps" launcher. Per SPEC's explicit
-"untouched Launcher" wording, the drawer shows the *real* installed-plugins
+"untouched Launcher" wording, the drawer shows the _real_ installed-plugins
 list, not a kanban-scoped substitute: `shellConfig.mobileFooter: false`
 (already set from scaffolding) removes the platform's own `MobileNav` —
 including its Drawer — entirely on this plugin's routes, so there's no
@@ -2107,7 +2146,7 @@ useResponsiveLayout() from the server but useResponsiveLayout is on the
 client." `ResponsiveSurface.tsx` has no `'use client'` of its own by design
 (confirmed by reading its source); every real consumer elsewhere in the
 monorepo (`example-mobile/app/_components/MobileShowcase.tsx`) only ever
-renders it from *inside* an already-`'use client'` component, never
+renders it from _inside_ an already-`'use client'` component, never
 straight from a Server Component's JSX. Fixed by dropping `ResponsiveSurface`
 from `layout.tsx` entirely and calling `useIsMobile()` directly inside the
 already-client `KanbanMobileFooter`, with an early `if (!isMobile) return
@@ -2208,7 +2247,7 @@ purely from a hover the user never turned into an actual visit. The sidebar
 badge itself is computed in `layout.tsx` (now `async`), which runs on every
 in-plugin navigation, not just visits to Inbox specifically, so it stays
 current without the (client-component) sidebar needing its own fetch;
-`hasUnseenInboxActivity()` deliberately excludes the viewer's *own* activity
+`hasUnseenInboxActivity()` deliberately excludes the viewer's _own_ activity
 from the "is there something new" check — commenting on your own card
 shouldn't light up your own unseen indicator, though the full feed still
 shows your own actions for a complete history.
@@ -2217,7 +2256,7 @@ shows your own actions for a complete history.
 this session (K.9's identical migration mistake):** the first live visit to
 `/kanban/inbox` after adding the new table 500'd with
 `SQLite error: no such table: kanban_inbox_state` — this plugin's dev
-sqld instance runs plugin migrations at server *startup* only (confirmed via
+sqld instance runs plugin migrations at server _startup_ only (confirmed via
 `docs/plugin-database.md` and this session's own established pattern), so a
 migration file added mid-session never applies to an already-running dev
 server without a restart. Recognized immediately from the exact same
@@ -2318,7 +2357,7 @@ Verified live end-to-end in dev: typed a query matching only one card's
 title (label-free at the time) — the other two lists correctly showed "No
 matching cards" with a `0` count badge, the match's title rendered a real
 `<mark>` around exactly the matched substring; typed a different query
-matching only that same card's *label*, not its title — same correct
+matching only that same card's _label_, not its title — same correct
 single-match result, and confirmed **no** `<mark>` rendered anywhere (a
 label match has nothing in the title to highlight, so none should appear);
 attempted a real `PointerEvent` drag sequence on a card while the filter was
@@ -2439,7 +2478,7 @@ reloading cold and seeing both the comment and its correct "commented" row
 appear together. Fixed with React's documented "adjust state during render
 when a prop changes" pattern rather than a `useEffect` (which would add an
 extra render showing stale data first): page 1 now always renders straight
-from the `card.activity` prop; only the *extra* pages fetched via "Load
+from the `card.activity` prop; only the _extra_ pages fetched via "Load
 more" are local state (`extraItems`), reset via an in-render
 `if (card.activity !== prevPage1)` check whenever a fresh prop arrives —
 correct on the very next mutation. Re-verified after the fix: added a
@@ -2646,12 +2685,12 @@ a natural Phase 2 addition via the manifest `schedules` field).
 
 ### SDK usage
 
-| Surface                        | Use                                                         |
-| ------------------------------ | ----------------------------------------------------------- |
-| `sdk.auth.requireSession()`    | First line of **every** server action and API route         |
-| `sdk.db.getClient()`           | Plugin's isolated DB (zero-argument invariant — never work around it) |
-| `sdk.notifications.send()`   | Inbox events (assignment, comment, due date, membership)    |
-| `sdk.platform`                 | Instance metadata as needed                                 |
+| Surface                     | Use                                                                   |
+| --------------------------- | --------------------------------------------------------------------- |
+| `sdk.auth.requireSession()` | First line of **every** server action and API route                   |
+| `sdk.db.getClient()`        | Plugin's isolated DB (zero-argument invariant — never work around it) |
+| `sdk.notifications.send()`  | Inbox events (assignment, comment, due date, membership)              |
+| `sdk.platform`              | Instance metadata as needed                                           |
 
 User lookup for assignees/members: the platform user directory
 (`sdk.directory`, experimental surface) — verify its exact shape at
@@ -2744,7 +2783,7 @@ Notes:
   `kanban_project_members` are inert. Board-add will be sourced from
   project members only once `K.20` ships, never a fresh directory search.
   Edit rights don't change in this phase at all — still strictly
-  `kanban_board_members` — the new tier only ever *adds* a read-only view
+  `kanban_board_members` — the new tier only ever _adds_ a read-only view
   path (project owner, or project+board both `public`), never a new edit
   path. `created_by` on `kanban_projects` remains a historical "who created
   this" field; ownership authority moves to `kanban_project_members` rows,
@@ -2800,8 +2839,8 @@ is called from within each mutating action's transaction. Activity types:
 `card.created`, `card.moved`, `field.changed`, `assignee.added/removed`,
 `label.added/removed`, `due.changed`, `checklist.changed`, `comment.added`.
 
-Notifications (`sdk.notifications.send()`) fire for events *about other
-users*: you were assigned, your card was commented on, you were added to a
+Notifications (`sdk.notifications.send()`) fire for events _about other
+users_: you were assigned, your card was commented on, you were added to a
 board, a card you're assigned to is due soon (due-soon delivery itself is
 Phase 2 — Phase 1 records the data). Notification URLs deep-link to
 `/kanban/b/<id>?card=<id>` (renamed from `/kanban/boards/<id>` — see the
@@ -2824,21 +2863,21 @@ deep-linkable, back-button closes it), not a separate route segment.
 
 ## UI composition (Design System)
 
-| Need                     | DS surface                                                        |
-| ------------------------ | ----------------------------------------------------------------- |
-| Page chrome              | `PageContainer`, `PageHeader`                                     |
-| Card detail (web)        | `Dialog` (`lg`)                                                   |
-| Card detail (mobile)     | `Dialog size="full"`                                              |
-| Menus (list/card/board)  | `Menu` / `MenuEntries`                                            |
-| Mobile footer            | `MobileFooter` (self-publishes shell chrome height)               |
-| Mobile list carousel     | `SwipableMobileCarousel` + `Slide/Header/Body` + `Dots`           |
-| Responsive split         | `useIsMobile` / `useResponsiveLayout` / `ResponsiveSurface`       |
-| Quick-add inputs         | `Input` + `useCommitOnEnterOrBlur`                                |
-| Labels / badges          | `Badge`, `TagInput`                                               |
-| Confirmation             | `ConfirmDialog`                                                   |
-| Empty / loading          | `EmptyState`, `Spinner`, skeletons per DS patterns                |
-| Avatars                  | `Avatar`                                                          |
-| Toasts                   | `useToast`                                                        |
+| Need                    | DS surface                                                  |
+| ----------------------- | ----------------------------------------------------------- |
+| Page chrome             | `PageContainer`, `PageHeader`                               |
+| Card detail (web)       | `Dialog` (`lg`)                                             |
+| Card detail (mobile)    | `Dialog size="full"`                                        |
+| Menus (list/card/board) | `Menu` / `MenuEntries`                                      |
+| Mobile footer           | `MobileFooter` (self-publishes shell chrome height)         |
+| Mobile list carousel    | `SwipableMobileCarousel` + `Slide/Header/Body` + `Dots`     |
+| Responsive split        | `useIsMobile` / `useResponsiveLayout` / `ResponsiveSurface` |
+| Quick-add inputs        | `Input` + `useCommitOnEnterOrBlur`                          |
+| Labels / badges         | `Badge`, `TagInput`                                         |
+| Confirmation            | `ConfirmDialog`                                             |
+| Empty / loading         | `EmptyState`, `Spinner`, skeletons per DS patterns          |
+| Avatars                 | `Avatar`                                                    |
+| Toasts                  | `useToast`                                                  |
 
 Anything reusable that Kanban would otherwise invent (e.g. a generic
 secondary-sidebar surface for the web home) should be checked against
@@ -2889,7 +2928,7 @@ footer regression on other routes.
 
 - Drizzle schema for all `kanban_*` tables per the Data model section,
   including indexes: `kanban_cards(board_id)`, `kanban_cards(list_id,
-  position)`, `kanban_activity(board_id, created_at)`,
+position)`, `kanban_activity(board_id, created_at)`,
   `kanban_comments(card_id)`, membership lookups.
 - Generated migrations; fractional-position helpers (midpoint insert,
   renormalize-in-transaction) with unit tests.
@@ -2968,7 +3007,7 @@ the card modal.
 separately, but sequenced by default).
 
 **Review checklist:** board payload is a single round trip (verify via
-network panel); quick-add commits on Enter *and* blur; list menu operations
+network panel); quick-add commits on Enter _and_ blur; list menu operations
 work end-to-end.
 
 ---
@@ -2980,7 +3019,7 @@ work end-to-end.
 **Deliverables:**
 
 - `?card=<id>` overlay routing (URL-addressable, back closes, `<Link
-  replace>` for intra-overlay nav).
+replace>` for intra-overlay nav).
 - `Dialog` (`lg`) with editable title, description (Markdown via DS
   `Markdown` for display), due date, labels (board-scoped label management +
   `TagInput`-style picker), checklist (add/toggle/reorder/delete).
@@ -3223,7 +3262,7 @@ not part of K.17–K.22.
 **Deliverables:**
 
 - `kanban_project_members` table (`project_id, user_id, tenant_id, role
-  ('owner' | 'member'), added_by, created_at`), structurally mirroring
+('owner' | 'member'), added_by, created_at`), structurally mirroring
   `kanban_board_members`.
 - `visibility` column (`'public' | 'private'`, default `'public'`) on both
   `kanban_projects` and `kanban_boards`.
@@ -3383,3 +3422,40 @@ role for Phase 1.
 **Review checklist:** demo script exercised end-to-end covering every row
 of the visibility matrix with two real users; no console errors/warnings;
 docs match shipped behavior.
+
+---
+
+#### K.23 — Account deletion handler
+
+**Goal:** Register `sdk.portability.provideDelete()` so a deleted user's
+projects, boards, and cards are actually cleaned up or transferred instead
+of silently left in place — the platform's account-deletion cascade had no
+handler for this plugin at all. See the Status section's own entry above
+for the full design writeup.
+
+**Deliverables:**
+
+- New `app/_lib/portability.ts`'s `deleteAllKanbanData`, wired into
+  `app/layout.tsx` in a best-effort `try/catch`.
+- Board loop: plain member removal (mirrors `removeBoardMember`'s own
+  membership + card-assignee cleanup), owner-to-successor transfer, or
+  hard-delete via the existing FK cascade when no member remains.
+- Project loop: plain member/co-owner removal, last-owner-to-earliest-member
+  promotion, or — for a sole member — a nested check for a board under the
+  project still independently owned by someone with no project-level
+  membership at all, promoting them instead of cascading the project away.
+- The user's own `kanban_inbox_state` row removed.
+- `app/_lib/__tests__/portability.test.ts`, run against the real generated
+  migrations on an ephemeral libsql DB (`createTestDb`), not a hand-rolled
+  fake — this plugin's own established convention.
+
+**Dependencies:** None — additive, no manifest permission change
+(`provideDelete` is ungated, unlike `provideExport`/`provideImport`).
+
+**Review checklist:** `pnpm typecheck`, `pnpm exec eslint`,
+`pnpm exec prettier --check`, `pnpm design:tokens:check`, and
+`pnpm exec vitest run plugins/sovereign-plugin-kanban.local` all pass; the
+9 new portability tests cover plain-member removal, owner-to-successor
+transfer, sole-member hard-delete with cascade, project co-owner removal,
+last-owner promotion, the nested board-owner-bystander case, and
+`kanban_inbox_state` cleanup.

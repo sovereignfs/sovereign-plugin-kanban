@@ -1,6 +1,6 @@
 # Sovereign Kanban — Roadmap
 
-**Manifest version:** 0.24.0 · **Last updated:** 2026-08-21
+**Manifest version:** 0.26.0 · **Last updated:** 2026-08-28
 
 Chronological build index — one row per PR, platform-`ROADMAP.md` style. Full
 task detail lives in [SPEC.md](SPEC.md); the product concept in
@@ -14,39 +14,39 @@ on the previous row unless noted.
 
 ## Phase 1a — Foundation
 
-| Slot  | Task                                    | Status | Spec task                                             |
-| ----- | --------------------------------------- | ------ | ----------------------------------------------------- |
-| 0.1.0 | Plugin scaffold & manifest              | ✅     | [K.1](SPEC.md#k1--plugin-scaffold--manifest)          |
-| 0.2.0 | Data model & migrations                 | ✅     | [K.2](SPEC.md#k2--data-model--migrations)             |
-| 0.3.0 | Server data layer & actions skeleton    | ✅     | [K.3](SPEC.md#k3--server-data-layer--actions-skeleton) |
+| Slot  | Task                                 | Status | Spec task                                              |
+| ----- | ------------------------------------ | ------ | ------------------------------------------------------ |
+| 0.1.0 | Plugin scaffold & manifest           | ✅     | [K.1](SPEC.md#k1--plugin-scaffold--manifest)           |
+| 0.2.0 | Data model & migrations              | ✅     | [K.2](SPEC.md#k2--data-model--migrations)              |
+| 0.3.0 | Server data layer & actions skeleton | ✅     | [K.3](SPEC.md#k3--server-data-layer--actions-skeleton) |
 
 ## Phase 1b — Web experience
 
-| Slot  | Task                                    | Status | Spec task                                                  |
-| ----- | --------------------------------------- | ------ | ---------------------------------------------------------- |
-| 0.4.0 | Web Home: boards overview               | ✅     | [K.4](SPEC.md#k4--web-home-boards-overview)                |
-| 0.5.0 | Web Board view: layout, lists, quick-add | ✅  | [K.5](SPEC.md#k5--web-board-view-layout-lists--quick-add) |
-| 0.6.0 | Card detail modal (web): core fields    | ✅     | [K.6](SPEC.md#k6--card-detail-modal-web-core-fields)       |
-| 0.7.0 | Web drag-and-drop                       | ✅     | [K.7](SPEC.md#k7--web-drag-and-drop)                       |
-| 0.8.0 | Comments, replies & activity log        | ✅     | [K.8](SPEC.md#k8--comments-replies--activity-log)          |
-| 0.9.0 | Board members & share                   | ✅     | [K.9](SPEC.md#k9--board-members--share)                    |
-| 0.10.0 | Board search/filter (web)              | ✅     | [K.10](SPEC.md#k10--board-searchfilter-web)                |
-| 0.11.0 | Inbox (web) & notification wiring      | ✅     | [K.11](SPEC.md#k11--inbox-web--notification-wiring)        |
+| Slot   | Task                                     | Status | Spec task                                                 |
+| ------ | ---------------------------------------- | ------ | --------------------------------------------------------- |
+| 0.4.0  | Web Home: boards overview                | ✅     | [K.4](SPEC.md#k4--web-home-boards-overview)               |
+| 0.5.0  | Web Board view: layout, lists, quick-add | ✅     | [K.5](SPEC.md#k5--web-board-view-layout-lists--quick-add) |
+| 0.6.0  | Card detail modal (web): core fields     | ✅     | [K.6](SPEC.md#k6--card-detail-modal-web-core-fields)      |
+| 0.7.0  | Web drag-and-drop                        | ✅     | [K.7](SPEC.md#k7--web-drag-and-drop)                      |
+| 0.8.0  | Comments, replies & activity log         | ✅     | [K.8](SPEC.md#k8--comments-replies--activity-log)         |
+| 0.9.0  | Board members & share                    | ✅     | [K.9](SPEC.md#k9--board-members--share)                   |
+| 0.10.0 | Board search/filter (web)                | ✅     | [K.10](SPEC.md#k10--board-searchfilter-web)               |
+| 0.11.0 | Inbox (web) & notification wiring        | ✅     | [K.11](SPEC.md#k11--inbox-web--notification-wiring)       |
 
 ## Phase 1c — Mobile experience
 
-| Slot   | Task                                   | Status | Spec task                                                  |
-| ------ | -------------------------------------- | ------ | ---------------------------------------------------------- |
-| 0.12.0 | Mobile navigation & Home               | ✅     | [K.12](SPEC.md#k12--mobile-navigation--home)               |
-| 0.13.0 | Mobile Board view: carousel & list menu | ✅  | [K.13](SPEC.md#k13--mobile-board-view-carousel--list-menu) |
-| 0.14.0 | Mobile card detail (full-screen)       | ✅     | [K.14](SPEC.md#k14--mobile-card-detail-full-screen)        |
-| 0.15.0 | Mobile card reorder & "Move to…"       | ✅     | [K.15](SPEC.md#k15--mobile-card-reorder--move-to)          |
+| Slot   | Task                                    | Status | Spec task                                                  |
+| ------ | --------------------------------------- | ------ | ---------------------------------------------------------- |
+| 0.12.0 | Mobile navigation & Home                | ✅     | [K.12](SPEC.md#k12--mobile-navigation--home)               |
+| 0.13.0 | Mobile Board view: carousel & list menu | ✅     | [K.13](SPEC.md#k13--mobile-board-view-carousel--list-menu) |
+| 0.14.0 | Mobile card detail (full-screen)        | ✅     | [K.14](SPEC.md#k14--mobile-card-detail-full-screen)        |
+| 0.15.0 | Mobile card reorder & "Move to…"        | ✅     | [K.15](SPEC.md#k15--mobile-card-reorder--move-to)          |
 
 ## Phase 1d — Release readiness
 
-| Slot   | Task                                   | Status | Spec task                                              |
-| ------ | -------------------------------------- | ------ | ------------------------------------------------------ |
-| 0.17.0 | Phase 1 hardening & polish pass        | ✅     | [K.16](SPEC.md#k16--phase-1-hardening--polish-pass)    |
+| Slot   | Task                            | Status | Spec task                                           |
+| ------ | ------------------------------- | ------ | --------------------------------------------------- |
+| 0.17.0 | Phase 1 hardening & polish pass | ✅     | [K.16](SPEC.md#k16--phase-1-hardening--polish-pass) |
 
 ## Phase 2 — Project & board membership + visibility
 
@@ -54,20 +54,20 @@ Web only — mobile read-only parity is a documented follow-up, not part of
 this phase. See `CONCEPT.md`'s "Phase 2" section for the decided product
 rules and `SPEC.md`'s `K.17`–`K.22` for technical detail.
 
-| Slot   | Task                                        | Status | Spec task                                                                 |
-| ------ | -------------------------------------------- | ------ | -------------------------------------------------------------------------- |
-| 0.18.0 | Project members & visibility schema         | ✅     | [K.17](SPEC.md#k17--project-members--visibility-schema)                  |
-| 0.19.0 | Project & board access authz (view vs. edit) | ✅     | [K.18](SPEC.md#k18--project--board-access-authz-view-vs-edit)            |
-| 0.20.0 | Project membership UI & sharing             | ✅     | [K.19](SPEC.md#k19--project-membership-ui--sharing)                      |
-| 0.21.0 | Board membership UI & board visibility      | ⬜     | [K.20](SPEC.md#k20--board-membership-ui--board-visibility)               |
-| 0.22.0 | Read-only view mode (web)                   | ⬜     | [K.21](SPEC.md#k21--read-only-view-mode-web)                             |
-| 0.23.0 | Phase 2 hardening & verification pass       | ⬜     | [K.22](SPEC.md#k22--phase-2-hardening--verification-pass)                |
+| Slot   | Task                                         | Status | Spec task                                                     |
+| ------ | -------------------------------------------- | ------ | ------------------------------------------------------------- |
+| 0.18.0 | Project members & visibility schema          | ✅     | [K.17](SPEC.md#k17--project-members--visibility-schema)       |
+| 0.19.0 | Project & board access authz (view vs. edit) | ✅     | [K.18](SPEC.md#k18--project--board-access-authz-view-vs-edit) |
+| 0.20.0 | Project membership UI & sharing              | ✅     | [K.19](SPEC.md#k19--project-membership-ui--sharing)           |
+| 0.21.0 | Board membership UI & board visibility       | ⬜     | [K.20](SPEC.md#k20--board-membership-ui--board-visibility)    |
+| 0.22.0 | Read-only view mode (web)                    | ⬜     | [K.21](SPEC.md#k21--read-only-view-mode-web)                  |
+| 0.23.0 | Phase 2 hardening & verification pass        | ⬜     | [K.22](SPEC.md#k22--phase-2-hardening--verification-pass)     |
 
 ## Prioritization rationale
 
 - **Web before mobile** (decided in concept review): the data layer built in
   1a serves both; mobile (1c) is presentation work on a proven backend.
-- **K.5 before K.4 is *not* allowed to invert silently** — K.4 is first
+- **K.5 before K.4 is _not_ allowed to invert silently** — K.4 is first
   because the home screen is the plugin's entry point and exercises
   project/board CRUD that the board view assumes exists. K.5 is marked
   `[parallel]`-capable with K.4 in SPEC.md only for multi-agent staffing.
@@ -87,7 +87,7 @@ rules and `SPEC.md`'s `K.17`–`K.22` for technical detail.
   moved on from there twice more before Phase 2 started: `2.0.0` for the
   `id`/`shell`/`type` identity change (a real major bump, breaking the DB
   namespace), then a deliberate renumbering back down to `0.17.0`. This
-  table's slot column tracks the version a task's *own* PR actually shipped
+  table's slot column tracks the version a task's _own_ PR actually shipped
   at, so it reads `0.17.0` here — not `1.0.0` or `2.0.0` — to match
   `manifest.json` and avoid disagreeing with the two numbering decisions
   made after K.16 landed.
@@ -108,6 +108,15 @@ rules and `SPEC.md`'s `K.17`–`K.22` for technical detail.
 - **`0.23.0` closes Phase 2 the same way `0.17.0` closed Phase 1** — a
   dedicated hardening/verification pass with a second real user, not folded
   into the last feature task.
+
+## Post-Phase-2 additions
+
+Standalone platform-integration work, not part of the Phase 1/2 feature
+numbering above.
+
+| Slot   | Task                     | Status | Spec task                                     |
+| ------ | ------------------------ | ------ | --------------------------------------------- |
+| 0.26.0 | Account deletion handler | ✅     | [K.23](SPEC.md#k23--account-deletion-handler) |
 
 ## Phase 2 candidates (not committed)
 
