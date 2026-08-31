@@ -50,6 +50,24 @@ version (see its own entry below and the ⬜/✅ breakdown in K.20's own
 task section) — full K.20 completion is still pending, not yet a version
 bump of its own.
 
+**`0.26.0` → `0.26.1` — migrate off `@sovereignfs/ui`'s removed `Dialog`
+`xl`/`full` sizes.** Not a plugin task — a forced update to track a breaking
+change in the host platform's `Dialog` component (`DialogSize` narrowed from
+`sm | md | xl | lg | full` to `sm | md | lg | auto`, `xl`/`full` dropped with
+no deprecation period; see the platform repo's `docs/upgrade.md`).
+`CardDetailOverlay.tsx:75`'s `size={isMobile ? 'full' : 'xl'}` was the only
+call site in this plugin and failed the platform's own monorepo-wide
+`pnpm turbo typecheck` outright ("`'full'` is not assignable to type
+`DialogSize`"). Migrated per the platform's own migration guidance: `full` →
+`lg` (they always rendered identically) and `xl` → `auto` — this dialog is
+exactly the "content genuinely varies in size" case `auto` was added for (an
+optional checklist/comments section). Mobile ignores `size` entirely
+regardless (`Dialog` always renders full-screen there), so the `isMobile`
+branch stays functionally inert either way — verified no other `xl`/`full`
+usage and no CSS assuming a fixed panel width elsewhere in this component.
+Confirmed via `pnpm --filter sovereign-plugin-kanban typecheck` and a full
+`pnpm turbo typecheck` from the monorepo root, both clean.
+
 **Mobile header polish + real Notification Center (0.23.0 → 0.24.0),
 developer-requested, handed off to a fresh agent at this point — read this
 entry in full before continuing.** Follow-on work to the "Mobile header"

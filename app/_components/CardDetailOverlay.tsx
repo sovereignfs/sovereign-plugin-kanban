@@ -72,7 +72,7 @@ export function CardDetailOverlay({
     <Dialog
       open
       onClose={close}
-      size={isMobile ? 'full' : 'xl'}
+      size={isMobile ? 'lg' : 'auto'}
       title={cardDetail.title}
       aria-label={cardDetail.title}
     >
