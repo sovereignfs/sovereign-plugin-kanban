@@ -142,3 +142,22 @@ export function resolveBoardColor(id: string): ResolvedBoardColor | null {
   const c = BOARD_COLORS.find((c) => c.id === id) ?? FALLBACK;
   return { value: c.value, textOn: c.textOn };
 }
+
+/**
+ * Which text colour reads on a label chip of this curated colour. Labels
+ * were originally all light pastels with dark text; the darker swatches
+ * added later for boards (ink, forest, wine, charcoal, plum) are offered
+ * for labels too, and dark text on them was unreadable. Unknown ids fall
+ * back to the first swatch's own `textOn`, same as `boardColorValue`.
+ */
+export function labelTextOn(id: string): 'light' | 'dark' {
+  return (BOARD_COLORS.find((c) => c.id === id) ?? FALLBACK).textOn;
+}
+
+/** The CSS-module class (if any) a label chip needs so its text contrasts with its swatch. */
+export function labelChipClassName(
+  id: string,
+  styles: { readonly [key: string]: string | undefined },
+): string | undefined {
+  return labelTextOn(id) === 'light' ? styles.labelChipOnDark : undefined;
+}

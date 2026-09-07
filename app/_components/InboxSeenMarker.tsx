@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { markInboxSeen } from '../actions';
 
 /**
@@ -10,21 +9,14 @@ import { markInboxSeen } from '../actions';
  * prefetches `<Link>` targets in the background (e.g. hovering the sidebar
  * entry), which would run this page's Server Component render without the
  * user ever actually visiting — a server-render-time write here would clear
- * "unseen" for activity nobody looked at. `router.refresh()` re-fetches the
- * layout (and its sidebar unseen-badge query) so the badge clears on this
- * same visit instead of only on the next navigation.
+ * "unseen" for activity nobody looked at. The action's own
+ * `revalidatePath` already re-renders the current route tree (layouts and
+ * their unseen-badge queries included) when it completes, so the badge
+ * clears on this same visit without a second `router.refresh()`.
  */
 export function InboxSeenMarker() {
-  const router = useRouter();
-
   useEffect(() => {
-    let cancelled = false;
-    void markInboxSeen().then(() => {
-      if (!cancelled) router.refresh();
-    });
-    return () => {
-      cancelled = true;
-    };
+    void markInboxSeen();
   }, []);
 
   return null;

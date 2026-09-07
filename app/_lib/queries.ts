@@ -1,16 +1,23 @@
 /**
  * Read layer — the three payloads from SPEC's "Data fetching contract".
  * Access is enforced here as well as in actions: every query is scoped to
- * the acting user's memberships, so a page can never render a board the
- * viewer doesn't belong to.
+ * the acting user's memberships (or, for reads, the viewer tier resolved by
+ * `getBoardAccess`), so a page can never render a board the viewer doesn't
+ * belong to.
+ *
+ * Every timestamp column read here goes through `asMs`/`asMsOrNull`
+ * (`timestamps.ts`) — on Postgres those columns are `bigint` and arrive as
+ * strings; nothing downstream of this file should ever have to know.
  */
-import { and, asc, desc, eq, inArray, lt, ne, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import { sdk } from '@sovereignfs/sdk';
 import type { KanbanDb } from '../_db/client';
 import * as schema from '../_db/schema';
 import { ACTIVITY_PAGE_SIZE, activityCursorFor, type ActivityCursor } from './activity-pagination';
-import { getProjectRole, type Actor } from './authz';
+import { getBoardAccess, requireCardView, type Actor, type BoardViewRole } from './authz';
 import type { MemberIdentity } from './identity';
+import { asMs, asMsOrNull } from './timestamps';
 
 // ---------------------------------------------------------------------------
 // Home payload
@@ -19,9 +26,12 @@ export interface HomeBoard {
   id: string;
   name: string;
   color: string;
+  description: string | null;
   projectId: string;
-  /** Phase 2 (K.18) — 'viewer' means read-only access; unused by UI until K.21. */
+  /** Phase 2 (K.18) — 'viewer' means read-only access (K.21 renders it as such). */
   role: 'owner' | 'member' | 'viewer';
+  /** Null while active; set when the board was archived (hidden behind the "Archived" disclosure). */
+  archivedAt: number | null;
 }
 
 export interface HomeProject {
@@ -32,24 +42,29 @@ export interface HomeProject {
   isCreator: boolean;
   /** Phase 2 (K.18) — the actor's own `kanban_project_members` role. */
   role: 'owner' | 'member';
-  /** Phase 2 (K.18) — 'public' | 'private'; unused by UI until K.19's visibility toggle. */
+  /** Phase 2 (K.18) — 'public' | 'private'. */
   visibility: string;
   /** Phase 2 (K.19) — every project member, for the share dialog. */
   members: Array<MemberIdentity & { role: string }>;
   boards: HomeBoard[];
 }
 
+async function resolveIdentities(
+  userIds: string[],
+): Promise<Map<string, { name: string | null; email: string | null; image: string | null }>> {
+  const unique = [...new Set(userIds)];
+  if (unique.length === 0) return new Map();
+  const users = await sdk.directory.resolveUsers({ ids: unique });
+  return new Map(users.map((u) => [u.id, { name: u.name, email: u.email, image: u.image }]));
+}
+
 /**
- * Projects the actor belongs to via `kanban_project_members` (K.18 — this
- * replaces the old created-by/board-membership-derived sourcing; every
- * project has an owner row for at least its creator, seeded either by
- * `createProject` or K.17's migration backfill), each with its boards:
- * explicit board memberships (edit access, unchanged from Phase 1) plus any
- * boards the actor can merely view — every board in a project they own, or
- * public boards in a public project they're a member of. `isCreator` is
- * untouched from Phase 1 (still `created_by`-derived) — it and project
- * ownership are equivalent until K.19 adds a promote-to-owner UI, so there's
- * no behavior change here yet.
+ * Projects the actor belongs to via `kanban_project_members` (K.18), each
+ * with its boards: explicit board memberships (edit access) plus any boards
+ * the actor can merely view — every board in a project they own, or public
+ * boards in a public project they're a member of. Archived boards are
+ * included (with `archivedAt` set) so Home can offer a restore path; the UI
+ * tucks them behind a disclosure rather than the main grid.
  */
 export async function getHomeData(db: KanbanDb, actor: Actor): Promise<HomeProject[]> {
   const myMemberships = await db
@@ -69,19 +84,12 @@ export async function getHomeData(db: KanbanDb, actor: Actor): Promise<HomeProje
   const projectIds = [...roleByProject.keys()];
 
   // Sorted in JS via `localeCompare`, not a SQL `orderBy` — SQLite's default
-  // BINARY collation is case-sensitive (every uppercase name would sort
-  // before every lowercase one), and this list is never large enough
-  // (a user's own project count) to need the DB to do the sorting.
+  // BINARY collation is case-sensitive, and a user's own project count is
+  // never large enough to need the DB to do the sorting.
   const projectRows = (
-    await db
-      .select()
-      .from(schema.projects)
-      .where(inArray(schema.projects.id, projectIds))
+    await db.select().from(schema.projects).where(inArray(schema.projects.id, projectIds))
   ).sort((a, b) => a.name.localeCompare(b.name));
 
-  // Every member of every one of these projects (K.19's share dialog needs
-  // the full list, not just the actor's own row), resolved to directory
-  // identities in one batched call rather than per-project.
   const allMemberRows = await db
     .select({
       projectId: schema.projectMembers.projectId,
@@ -90,22 +98,17 @@ export async function getHomeData(db: KanbanDb, actor: Actor): Promise<HomeProje
     })
     .from(schema.projectMembers)
     .where(inArray(schema.projectMembers.projectId, projectIds));
-  const memberDirectoryUsers =
-    allMemberRows.length === 0
-      ? []
-      : await sdk.directory.resolveUsers({
-          ids: [...new Set(allMemberRows.map((m) => m.userId))],
-        });
-  const memberDirectoryById = new Map(memberDirectoryUsers.map((u) => [u.id, u]));
+  const identityById = await resolveIdentities(allMemberRows.map((m) => m.userId));
   const membersByProject = new Map<string, Array<MemberIdentity & { role: string }>>();
   for (const m of allMemberRows) {
     const list = membersByProject.get(m.projectId) ?? [];
+    const identity = identityById.get(m.userId);
     list.push({
       userId: m.userId,
       role: m.role,
-      name: memberDirectoryById.get(m.userId)?.name ?? null,
-      email: memberDirectoryById.get(m.userId)?.email ?? null,
-      image: memberDirectoryById.get(m.userId)?.image ?? null,
+      name: identity?.name ?? null,
+      email: identity?.email ?? null,
+      image: identity?.image ?? null,
     });
     membersByProject.set(m.projectId, list);
   }
@@ -130,7 +133,9 @@ export async function getHomeData(db: KanbanDb, actor: Actor): Promise<HomeProje
       id: schema.boards.id,
       name: schema.boards.name,
       color: schema.boards.color,
+      description: schema.boards.description,
       projectId: schema.boards.projectId,
+      archivedAt: schema.boards.archivedAt,
       role: schema.boardMembers.role,
     })
     .from(schema.boards)
@@ -151,15 +156,16 @@ export async function getHomeData(db: KanbanDb, actor: Actor): Promise<HomeProje
       id: b.id,
       name: b.name,
       color: b.color,
+      description: b.description,
       projectId: b.projectId,
       role: b.role === 'owner' ? 'owner' : 'member',
+      archivedAt: asMsOrNull(b.archivedAt),
     });
     seenBoardIds.add(b.id);
   }
 
   // Read-only boards: every board in a project the actor owns, or public
-  // boards in a public project the actor is a plain member of. Explicit
-  // memberships above already cover edit access for any of these boards.
+  // boards in a public project the actor is a plain member of.
   const ownedProjectIds = projectRows
     .filter((p) => roleByProject.get(p.id) === 'owner')
     .map((p) => p.id);
@@ -174,8 +180,10 @@ export async function getHomeData(db: KanbanDb, actor: Actor): Promise<HomeProje
         id: schema.boards.id,
         name: schema.boards.name,
         color: schema.boards.color,
+        description: schema.boards.description,
         projectId: schema.boards.projectId,
         visibility: schema.boards.visibility,
+        archivedAt: schema.boards.archivedAt,
       })
       .from(schema.boards)
       .where(inArray(schema.boards.projectId, viewerCandidateProjectIds))
@@ -188,7 +196,15 @@ export async function getHomeData(db: KanbanDb, actor: Actor): Promise<HomeProje
       if (!ownsProject && b.visibility !== 'public') continue;
       const project = projectById.get(b.projectId);
       if (!project) continue;
-      project.boards.push({ id: b.id, name: b.name, color: b.color, projectId: b.projectId, role: 'viewer' });
+      project.boards.push({
+        id: b.id,
+        name: b.name,
+        color: b.color,
+        description: b.description,
+        projectId: b.projectId,
+        role: 'viewer',
+        archivedAt: asMsOrNull(b.archivedAt),
+      });
       seenBoardIds.add(b.id);
     }
   }
@@ -223,77 +239,66 @@ export interface BoardData {
   id: string;
   name: string;
   color: string;
+  description: string | null;
   projectId: string;
+  /** 'public' | 'private' (K.20) — only consulted when the project is public. */
+  visibility: string;
+  /** Null while active. An archived board renders read-only for everyone. */
+  archivedAt: number | null;
   /**
    * 'viewer' (K.18) — read-only access via project ownership or a public
    * project + public board, never an explicit `kanban_board_members` row.
    * Every mutation action still checks board membership directly and never
-   * treats 'viewer' as passing, so this is purely a read-side addition. The
-   * board renders fully for a viewer even though no read-only UI exists
-   * yet (K.21) — mutation attempts are denied server-side in the meantime,
-   * just without a friendly disabled-affordance UI around them.
+   * treats 'viewer' as passing. K.21 threads `canEdit` (`role !== 'viewer'`
+   * and not archived) through every interactive component.
    */
-  role: 'owner' | 'member' | 'viewer';
+  role: BoardViewRole;
+  /** The actor's project-level role, if any. */
+  projectRole: 'owner' | 'member' | null;
+  /** Board owner or project owner (K.20): settings, archive/delete, membership. */
+  canManage: boolean;
   members: Array<MemberIdentity & { role: string }>;
   labels: Array<{ id: string; name: string; color: string }>;
   lists: BoardList[];
+  /** Active (non-archived) cards only. */
   cards: BoardCardSummary[];
+  /** How many cards are archived — drives the "Archived cards" menu entry. */
+  archivedCardCount: number;
 }
 
 /**
- * Full board payload, or null when the actor has no access at all (not a
- * board member, not a project owner, and not a project member of a public
- * project + public board — K.18).
+ * Full board payload, or null when the actor has no access at all (see
+ * `getBoardAccess` for the three access tiers).
  */
 export async function getBoardData(
   db: KanbanDb,
   boardId: string,
   actor: Actor,
 ): Promise<BoardData | null> {
+  const access = await getBoardAccess(db, boardId, actor);
+  if (!access) return null;
+
   const boardRows = await db
     .select({
       id: schema.boards.id,
       name: schema.boards.name,
       color: schema.boards.color,
+      description: schema.boards.description,
       projectId: schema.boards.projectId,
-      boardVisibility: schema.boards.visibility,
-      projectVisibility: schema.projects.visibility,
-      memberRole: schema.boardMembers.role,
+      visibility: schema.boards.visibility,
+      archivedAt: schema.boards.archivedAt,
     })
     .from(schema.boards)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.boards.projectId))
-    .leftJoin(
-      schema.boardMembers,
-      and(
-        eq(schema.boardMembers.boardId, schema.boards.id),
-        eq(schema.boardMembers.userId, actor.userId),
-        eq(schema.boardMembers.tenantId, actor.tenantId),
-      ),
-    )
     .where(eq(schema.boards.id, boardId));
-  const boardRow = boardRows[0];
-  if (!boardRow) return null;
+  const board = boardRows[0];
+  if (!board) return null;
 
-  let role: 'owner' | 'member' | 'viewer';
-  if (boardRow.memberRole === 'owner' || boardRow.memberRole === 'member') {
-    role = boardRow.memberRole;
-  } else {
-    const projectRole = await getProjectRole(db, boardRow.projectId, actor);
-    if (projectRole === 'owner') {
-      role = 'viewer';
-    } else if (
-      projectRole === 'member' &&
-      boardRow.projectVisibility === 'public' &&
-      boardRow.boardVisibility === 'public'
-    ) {
-      role = 'viewer';
-    } else {
-      return null;
-    }
-  }
-  const board = { id: boardRow.id, name: boardRow.name, color: boardRow.color, projectId: boardRow.projectId };
-
-  const [memberRows, boardLabels, listRows, cardRows] = await Promise.all([
+  // Per-card aggregates are joined through `kanban_cards` on `board_id`
+  // rather than `inArray(cardIds)` — a board with thousands of cards would
+  // otherwise ship thousands of bind parameters per query (and previously
+  // fetched one row per *comment* just to count them).
+  const onBoard = and(eq(schema.cards.boardId, boardId), isNull(schema.cards.archivedAt));
+  const [memberRows, boardLabels, listRows, cardRows, archivedRows] = await Promise.all([
     db
       .select({ userId: schema.boardMembers.userId, role: schema.boardMembers.role })
       .from(schema.boardMembers)
@@ -303,11 +308,7 @@ export async function getBoardData(
       .from(schema.labels)
       .where(eq(schema.labels.boardId, boardId)),
     db
-      .select({
-        id: schema.lists.id,
-        name: schema.lists.name,
-        position: schema.lists.position,
-      })
+      .select({ id: schema.lists.id, name: schema.lists.name, position: schema.lists.position })
       .from(schema.lists)
       .where(eq(schema.lists.boardId, boardId))
       .orderBy(asc(schema.lists.position)),
@@ -320,31 +321,45 @@ export async function getBoardData(
         dueDate: schema.cards.dueDate,
       })
       .from(schema.cards)
-      .where(eq(schema.cards.boardId, boardId))
+      .where(onBoard)
       .orderBy(asc(schema.cards.position)),
+    db
+      .select({ n: count() })
+      .from(schema.cards)
+      .where(and(eq(schema.cards.boardId, boardId), sql`${schema.cards.archivedAt} IS NOT NULL`)),
   ]);
 
-  const cardIds = cardRows.map((c) => c.id);
-  const [labelLinks, assigneeRows, checklistRows, commentRows] =
-    cardIds.length === 0
+  const [labelLinks, assigneeCounts, checklistCounts, commentCounts] =
+    cardRows.length === 0
       ? [[], [], [], []]
       : await Promise.all([
           db
             .select({ cardId: schema.cardLabels.cardId, labelId: schema.cardLabels.labelId })
             .from(schema.cardLabels)
-            .where(inArray(schema.cardLabels.cardId, cardIds)),
+            .innerJoin(schema.cards, eq(schema.cards.id, schema.cardLabels.cardId))
+            .where(onBoard),
           db
-            .select({ cardId: schema.cardAssignees.cardId })
+            .select({ cardId: schema.cardAssignees.cardId, n: count() })
             .from(schema.cardAssignees)
-            .where(inArray(schema.cardAssignees.cardId, cardIds)),
+            .innerJoin(schema.cards, eq(schema.cards.id, schema.cardAssignees.cardId))
+            .where(onBoard)
+            .groupBy(schema.cardAssignees.cardId),
           db
-            .select({ cardId: schema.checklistItems.cardId, done: schema.checklistItems.done })
+            .select({
+              cardId: schema.checklistItems.cardId,
+              total: count(),
+              done: sql<number>`coalesce(sum(${schema.checklistItems.done}), 0)`.mapWith(Number),
+            })
             .from(schema.checklistItems)
-            .where(inArray(schema.checklistItems.cardId, cardIds)),
+            .innerJoin(schema.cards, eq(schema.cards.id, schema.checklistItems.cardId))
+            .where(onBoard)
+            .groupBy(schema.checklistItems.cardId),
           db
-            .select({ cardId: schema.comments.cardId })
+            .select({ cardId: schema.comments.cardId, n: count() })
             .from(schema.comments)
-            .where(inArray(schema.comments.cardId, cardIds)),
+            .innerJoin(schema.cards, eq(schema.cards.id, schema.comments.cardId))
+            .where(onBoard)
+            .groupBy(schema.comments.cardId),
         ]);
 
   const labelById = new Map(boardLabels.map((l) => [l.id, l]));
@@ -353,7 +368,7 @@ export async function getBoardData(
     title: c.title,
     listId: c.listId,
     position: c.position,
-    dueDate: c.dueDate,
+    dueDate: asMsOrNull(c.dueDate),
     labels: [],
     assigneeCount: 0,
     checklistDone: 0,
@@ -366,53 +381,76 @@ export async function getBoardData(
     const card = cardById.get(link.cardId);
     if (label && card) card.labels.push(label);
   }
-  for (const a of assigneeRows) {
+  for (const a of assigneeCounts) {
     const card = cardById.get(a.cardId);
-    if (card) card.assigneeCount++;
+    if (card) card.assigneeCount = a.n;
   }
-  for (const item of checklistRows) {
+  for (const item of checklistCounts) {
     const card = cardById.get(item.cardId);
     if (!card) continue;
-    card.checklistTotal++;
-    if (item.done === 1) card.checklistDone++;
+    card.checklistTotal = item.total;
+    card.checklistDone = item.done;
   }
-  for (const c of commentRows) {
+  for (const c of commentCounts) {
     const card = cardById.get(c.cardId);
-    if (card) card.commentCount++;
+    if (card) card.commentCount = c.n;
   }
 
   const countByList = new Map<string, number>();
   for (const c of cards) countByList.set(c.listId, (countByList.get(c.listId) ?? 0) + 1);
 
   // K.9: resolve each member's directory name/email so avatars, the share
-  // dialog, and every displayName() call site can show a real person
-  // instead of a raw id. A departed/deactivated user simply isn't in the
-  // result — name/email fall back to null, and displayName() falls back to
-  // the raw id.
-  const directoryUsers =
-    memberRows.length === 0
-      ? []
-      : await sdk.directory.resolveUsers({ ids: memberRows.map((m) => m.userId) });
-  const directoryById = new Map(directoryUsers.map((u) => [u.id, u]));
+  // dialog, and every displayName() call site can show a real person. A
+  // departed/deactivated user simply isn't in the result — name/email fall
+  // back to null, and displayName() falls back to the raw id.
+  const identityById = await resolveIdentities(memberRows.map((m) => m.userId));
   const members: Array<MemberIdentity & { role: string }> = memberRows.map((m) => ({
     userId: m.userId,
     role: m.role,
-    name: directoryById.get(m.userId)?.name ?? null,
-    email: directoryById.get(m.userId)?.email ?? null,
-    image: directoryById.get(m.userId)?.image ?? null,
+    name: identityById.get(m.userId)?.name ?? null,
+    email: identityById.get(m.userId)?.email ?? null,
+    image: identityById.get(m.userId)?.image ?? null,
   }));
 
   return {
     id: board.id,
     name: board.name,
     color: board.color,
+    description: board.description,
     projectId: board.projectId,
-    role,
+    visibility: board.visibility,
+    archivedAt: asMsOrNull(board.archivedAt),
+    role: access.role,
+    projectRole: access.projectRole,
+    canManage: access.role === 'owner' || access.projectRole === 'owner',
     members,
     labels: boardLabels,
     lists: listRows.map((l) => ({ ...l, cardCount: countByList.get(l.id) ?? 0 })),
     cards,
+    archivedCardCount: archivedRows[0]?.n ?? 0,
   };
+}
+
+/** Archived cards on a board (newest archive first), for the restore/delete panel. */
+export interface ArchivedCard {
+  id: string;
+  title: string;
+  listId: string;
+  archivedAt: number;
+}
+
+export async function getArchivedCards(db: KanbanDb, boardId: string): Promise<ArchivedCard[]> {
+  const rows = await db
+    .select({
+      id: schema.cards.id,
+      title: schema.cards.title,
+      listId: schema.cards.listId,
+      archivedAt: schema.cards.archivedAt,
+    })
+    .from(schema.cards)
+    .where(and(eq(schema.cards.boardId, boardId), sql`${schema.cards.archivedAt} IS NOT NULL`))
+    .orderBy(desc(schema.cards.archivedAt));
+  return rows.map((r) => ({ ...r, archivedAt: asMsOrNull(r.archivedAt) ?? 0 }));
 }
 
 // ---------------------------------------------------------------------------
@@ -432,6 +470,7 @@ export interface CardDetail {
   dueDate: number | null;
   createdBy: string;
   createdAt: number;
+  archivedAt: number | null;
   labels: Array<{ id: string; name: string; color: string }>;
   assignees: Array<{ userId: string; assignedBy: string }>;
   checklist: Array<{ id: string; text: string; done: boolean; position: number }>;
@@ -441,6 +480,7 @@ export interface CardDetail {
     authorId: string;
     body: string;
     createdAt: number;
+    updatedAt: number;
   }>;
   activity: Array<{
     id: string;
@@ -451,12 +491,29 @@ export interface CardDetail {
   }>;
 }
 
-/** Full card payload (fetched when the detail surface opens), or null without access. */
+function parsePayload(payload: string | null): unknown {
+  if (payload === null) return null;
+  try {
+    return JSON.parse(payload) as unknown;
+  } catch {
+    // A malformed row must never take the whole card/board feed down.
+    return null;
+  }
+}
+
+/**
+ * Full card payload (fetched when the detail surface opens), or null without
+ * access. Viewers (K.18) get it too — reading a card is part of reading the
+ * board; every mutation action still demands explicit membership.
+ */
 export async function getCardDetail(
   db: KanbanDb,
   cardId: string,
   actor: Actor,
 ): Promise<CardDetail | null> {
+  const view = await requireCardView(db, cardId, actor);
+  if (!view) return null;
+
   const rows = await db
     .select({
       id: schema.cards.id,
@@ -467,16 +524,9 @@ export async function getCardDetail(
       dueDate: schema.cards.dueDate,
       createdBy: schema.cards.createdBy,
       createdAt: schema.cards.createdAt,
+      archivedAt: schema.cards.archivedAt,
     })
     .from(schema.cards)
-    .innerJoin(
-      schema.boardMembers,
-      and(
-        eq(schema.boardMembers.boardId, schema.cards.boardId),
-        eq(schema.boardMembers.userId, actor.userId),
-        eq(schema.boardMembers.tenantId, actor.tenantId),
-      ),
-    )
     .where(eq(schema.cards.id, cardId));
   const card = rows[0];
   if (!card) return null;
@@ -508,6 +558,7 @@ export async function getCardDetail(
         authorId: schema.comments.authorId,
         body: schema.comments.body,
         createdAt: schema.comments.createdAt,
+        updatedAt: schema.comments.updatedAt,
       })
       .from(schema.comments)
       .where(eq(schema.comments.cardId, cardId))
@@ -527,14 +578,27 @@ export async function getCardDetail(
   ]);
 
   return {
-    ...card,
+    id: card.id,
+    boardId: card.boardId,
+    listId: card.listId,
+    title: card.title,
+    description: card.description,
+    dueDate: asMsOrNull(card.dueDate),
+    createdBy: card.createdBy,
+    createdAt: asMs(card.createdAt),
+    archivedAt: asMsOrNull(card.archivedAt),
     labels: labelRows,
     assignees,
     checklist: checklist.map((i) => ({ ...i, done: i.done === 1 })),
-    comments: commentRows,
+    comments: commentRows.map((c) => ({
+      ...c,
+      createdAt: asMs(c.createdAt),
+      updatedAt: asMs(c.updatedAt),
+    })),
     activity: activityRows.map((a) => ({
       ...a,
-      payload: a.payload === null ? null : (JSON.parse(a.payload) as unknown),
+      createdAt: asMs(a.createdAt),
+      payload: parsePayload(a.payload),
     })),
   };
 }
@@ -545,9 +609,7 @@ export async function getCardDetail(
 // `getMoreCardActivity` action) for subsequent pages using the same
 // `(createdAt, id)` cursor and ordering, so a page boundary can never
 // duplicate or skip a row that shares a millisecond timestamp with its
-// neighbour. `ActivityCursor`/`activityCursorFor` themselves live in
-// `activity-pagination.ts` (see that file's doc comment) and are re-exported
-// above.
+// neighbour.
 
 export interface ActivityPage {
   items: CardDetail['activity'];
@@ -582,9 +644,86 @@ export async function getActivityPage(
 
   const items = rows.map((a) => ({
     ...a,
-    payload: a.payload === null ? null : (JSON.parse(a.payload) as unknown),
+    createdAt: asMs(a.createdAt),
+    payload: parsePayload(a.payload),
   }));
   return { items, nextCursor: activityCursorFor(items) };
+}
+
+// ---------------------------------------------------------------------------
+// Board activity — the board-level feed (list/member/board events plus every
+// card event), previously recorded but never rendered anywhere.
+
+export const BOARD_ACTIVITY_PAGE_SIZE = 30;
+
+export interface BoardActivityItem {
+  id: string;
+  actorId: string;
+  type: string;
+  payload: unknown;
+  createdAt: number;
+  cardId: string | null;
+  /** Resolved for rows still pointing at a live card; null for board-level rows or deleted cards. */
+  cardTitle: string | null;
+}
+
+export interface BoardActivityPage {
+  items: BoardActivityItem[];
+  nextCursor: ActivityCursor | null;
+}
+
+export async function getBoardActivityPage(
+  db: KanbanDb,
+  boardId: string,
+  cursor: ActivityCursor | null,
+): Promise<BoardActivityPage> {
+  const scope = eq(schema.activity.boardId, boardId);
+  const rows = await db
+    .select({
+      id: schema.activity.id,
+      actorId: schema.activity.actorId,
+      type: schema.activity.type,
+      payload: schema.activity.payload,
+      createdAt: schema.activity.createdAt,
+      cardId: schema.activity.cardId,
+      cardTitle: schema.cards.title,
+    })
+    .from(schema.activity)
+    .leftJoin(schema.cards, eq(schema.cards.id, schema.activity.cardId))
+    .where(
+      cursor
+        ? and(
+            scope,
+            or(
+              lt(schema.activity.createdAt, cursor.createdAt),
+              and(
+                eq(schema.activity.createdAt, cursor.createdAt),
+                lt(schema.activity.id, cursor.id),
+              ),
+            ),
+          )
+        : scope,
+    )
+    .orderBy(desc(schema.activity.createdAt), desc(schema.activity.id))
+    .limit(BOARD_ACTIVITY_PAGE_SIZE);
+
+  const items: BoardActivityItem[] = rows.map((a) => ({
+    id: a.id,
+    actorId: a.actorId,
+    type: a.type,
+    payload: parsePayload(a.payload),
+    createdAt: asMs(a.createdAt),
+    cardId: a.cardId,
+    cardTitle: a.cardTitle ?? null,
+  }));
+  const last = items[items.length - 1];
+  return {
+    items,
+    nextCursor:
+      items.length < BOARD_ACTIVITY_PAGE_SIZE || !last
+        ? null
+        : { createdAt: last.createdAt, id: last.id },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -595,12 +734,8 @@ export const INBOX_PAGE_SIZE = 100;
 /**
  * "assigned" = actor was assigned to the card by someone else. "reply" =
  * someone replied to one of the actor's own comments. Deliberately narrower
- * than a per-board activity log (that's `CardDetail['activity']`, rendered
- * in the card detail panel via `describeActivity()`) — the Inbox is "things
- * that happened *to* you," not "everything that happened on your boards."
- * @-mentions are out of scope: this plugin has no mention parsing anywhere
- * yet, so there's no `'mention'` kind here to add later without new
- * infrastructure first.
+ * than a per-board activity log — the Inbox is "things that happened *to*
+ * you," not "everything that happened on your boards."
  */
 export interface InboxItem {
   id: string;
@@ -618,27 +753,42 @@ export interface InboxFeed {
   members: MemberIdentity[];
 }
 
+/** Replies (by someone else) to comments the actor wrote — one indexed self-join, bounded by `limit`. */
+function repliesToActor(db: KanbanDb, actor: Actor, limit: number) {
+  const parent = alias(schema.comments, 'parent');
+  return db
+    .select({
+      id: schema.comments.id,
+      cardId: schema.comments.cardId,
+      actorId: schema.comments.authorId,
+      createdAt: schema.comments.createdAt,
+    })
+    .from(schema.comments)
+    .innerJoin(parent, eq(parent.id, schema.comments.parentId))
+    .where(
+      and(
+        eq(parent.authorId, actor.userId),
+        eq(parent.tenantId, actor.tenantId),
+        ne(schema.comments.authorId, actor.userId),
+      ),
+    )
+    .orderBy(desc(schema.comments.createdAt))
+    .limit(limit);
+}
+
 /**
- * Personalized Inbox (K.11 redesign) — "cards assigned to me" and "replies
- * to my comments," queried straight from the source-of-truth tables
- * (`kanban_card_assignees`, `kanban_comments`) rather than scanning
- * `kanban_activity`: that log's `payload` is opaque JSON `text` with no
- * native query support, so filtering "is this about me" through it would
- * mean fetching every board's activity and parsing JSON in application
- * code — the same "everything, unfiltered" shape this redesign replaces.
- * Both queries below lean on their own indexed columns instead
- * (`kanban_card_assignees_user_idx`; the new `kanban_comments_author_idx`/
- * `kanban_comments_parent_idx` pair, used as a two-step "find my comment
- * ids, then find replies to them" rather than a self-join, so each step can
- * use its own index rather than scanning the whole comments table).
+ * Personalized Inbox — "cards assigned to me" and "replies to my comments,"
+ * queried straight from the source-of-truth tables. The reply side is a
+ * self-join on `kanban_comments` (`parent_id` → the actor's own comment,
+ * both sides indexed) rather than the previous "fetch every comment id the
+ * actor ever wrote, then `inArray` them" — that list was unbounded and ran
+ * on every navigation via `hasUnseenInboxActivity`.
  *
- * Self-assignment and replying to your own comment are excluded (matches
- * `assignMember`/`addComment`'s own notification dedup — you don't need to
- * be told about your own action). Capped at `INBOX_PAGE_SIZE`, newest first,
- * no further pagination — same deliberate Phase 1 scope as before.
+ * Self-assignment and replying to your own comment are excluded. Capped at
+ * `INBOX_PAGE_SIZE`, newest first, no further pagination.
  */
 export async function getInboxFeed(db: KanbanDb, actor: Actor): Promise<InboxFeed> {
-  const [assignedRows, myCommentRows] = await Promise.all([
+  const [assignedRows, replyRows] = await Promise.all([
     db
       .select({
         cardId: schema.cardAssignees.cardId,
@@ -655,38 +805,14 @@ export async function getInboxFeed(db: KanbanDb, actor: Actor): Promise<InboxFee
       )
       .orderBy(desc(schema.cardAssignees.createdAt))
       .limit(INBOX_PAGE_SIZE),
-    db
-      .select({ id: schema.comments.id })
-      .from(schema.comments)
-      .where(
-        and(eq(schema.comments.authorId, actor.userId), eq(schema.comments.tenantId, actor.tenantId)),
-      ),
+    repliesToActor(db, actor, INBOX_PAGE_SIZE),
   ]);
-
-  const myCommentIds = myCommentRows.map((c) => c.id);
-  const replyRows =
-    myCommentIds.length === 0
-      ? []
-      : await db
-          .select({
-            id: schema.comments.id,
-            cardId: schema.comments.cardId,
-            actorId: schema.comments.authorId,
-            createdAt: schema.comments.createdAt,
-          })
-          .from(schema.comments)
-          .where(
-            and(
-              inArray(schema.comments.parentId, myCommentIds),
-              ne(schema.comments.authorId, actor.userId),
-            ),
-          )
-          .orderBy(desc(schema.comments.createdAt))
-          .limit(INBOX_PAGE_SIZE);
 
   if (assignedRows.length === 0 && replyRows.length === 0) return { items: [], members: [] };
 
-  const cardIds = [...new Set([...assignedRows.map((r) => r.cardId), ...replyRows.map((r) => r.cardId)])];
+  const cardIds = [
+    ...new Set([...assignedRows.map((r) => r.cardId), ...replyRows.map((r) => r.cardId)]),
+  ];
   const cardRows = await db
     .select({ id: schema.cards.id, title: schema.cards.title, boardId: schema.cards.boardId })
     .from(schema.cards)
@@ -704,8 +830,7 @@ export async function getInboxFeed(db: KanbanDb, actor: Actor): Promise<InboxFee
   const boardNameById = new Map(boardRows.map((b) => [b.id, b.name]));
 
   // A card can have been deleted between the assignment/reply and this read
-  // (no cascading cleanup on the Inbox side) — skip rather than render a
-  // dangling row with no title/board to show.
+  // — skip rather than render a dangling row with no title/board to show.
   function toItem(
     kind: InboxItem['kind'],
     id: string,
@@ -729,35 +854,36 @@ export async function getInboxFeed(db: KanbanDb, actor: Actor): Promise<InboxFee
 
   const items = [
     ...assignedRows.map((r) =>
-      toItem('assigned', `assigned:${r.cardId}:${actor.userId}`, r.cardId, r.actorId, r.createdAt),
+      toItem(
+        'assigned',
+        `assigned:${r.cardId}:${actor.userId}`,
+        r.cardId,
+        r.actorId,
+        asMs(r.createdAt),
+      ),
     ),
-    ...replyRows.map((r) => toItem('reply', r.id, r.cardId, r.actorId, r.createdAt)),
+    ...replyRows.map((r) => toItem('reply', r.id, r.cardId, r.actorId, asMs(r.createdAt))),
   ]
     .filter((i): i is InboxItem => i !== null)
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, INBOX_PAGE_SIZE);
 
-  const actorIds = [...new Set(items.map((i) => i.actorId))];
-  const directoryUsers =
-    actorIds.length === 0 ? [] : await sdk.directory.resolveUsers({ ids: actorIds });
-  const directoryById = new Map(directoryUsers.map((u) => [u.id, u]));
-  const members: MemberIdentity[] = actorIds.map((userId) => ({
+  const identityById = await resolveIdentities(items.map((i) => i.actorId));
+  const members: MemberIdentity[] = [...identityById.entries()].map(([userId, identity]) => ({
     userId,
-    name: directoryById.get(userId)?.name ?? null,
-    email: directoryById.get(userId)?.email ?? null,
-    image: directoryById.get(userId)?.image ?? null,
+    ...identity,
   }));
 
   return { items, members };
 }
 
 /**
- * For the sidebar's unseen badge — a cheap existence check, not a full feed
- * fetch. Mirrors `getInboxFeed`'s own self-exclusion (no badge for your own
- * self-assignment or a reply to your own comment).
+ * For the sidebar's unseen badge — a cheap existence check (two `LIMIT 1`
+ * reads on indexed columns), not a full feed fetch. Mirrors `getInboxFeed`'s
+ * own self-exclusion.
  */
 export async function hasUnseenInboxActivity(db: KanbanDb, actor: Actor): Promise<boolean> {
-  const [seenRows, latestAssignedRows, myCommentRows] = await Promise.all([
+  const [seenRows, latestAssignedRows, latestReplyRows] = await Promise.all([
     db
       .select({ lastSeenAt: schema.inboxState.lastSeenAt })
       .from(schema.inboxState)
@@ -774,31 +900,14 @@ export async function hasUnseenInboxActivity(db: KanbanDb, actor: Actor): Promis
       )
       .orderBy(desc(schema.cardAssignees.createdAt))
       .limit(1),
-    db
-      .select({ id: schema.comments.id })
-      .from(schema.comments)
-      .where(
-        and(eq(schema.comments.authorId, actor.userId), eq(schema.comments.tenantId, actor.tenantId)),
-      ),
+    repliesToActor(db, actor, 1),
   ]);
 
-  const lastSeenAt = seenRows[0]?.lastSeenAt ?? null;
-
-  const latestAssignedAt = latestAssignedRows[0]?.createdAt;
-  if (latestAssignedAt !== undefined && (lastSeenAt === null || latestAssignedAt > lastSeenAt)) {
-    return true;
-  }
-
-  const myCommentIds = myCommentRows.map((c) => c.id);
-  if (myCommentIds.length === 0) return false;
-  const latestReplyRows = await db
-    .select({ createdAt: schema.comments.createdAt })
-    .from(schema.comments)
-    .where(
-      and(inArray(schema.comments.parentId, myCommentIds), ne(schema.comments.authorId, actor.userId)),
-    )
-    .orderBy(desc(schema.comments.createdAt))
-    .limit(1);
-  const latestReplyAt = latestReplyRows[0]?.createdAt;
-  return latestReplyAt !== undefined && (lastSeenAt === null || latestReplyAt > lastSeenAt);
+  const lastSeenAt = asMsOrNull(seenRows[0]?.lastSeenAt);
+  const latest = Math.max(
+    asMsOrNull(latestAssignedRows[0]?.createdAt) ?? -1,
+    asMsOrNull(latestReplyRows[0]?.createdAt) ?? -1,
+  );
+  if (latest < 0) return false;
+  return lastSeenAt === null || latest > lastSeenAt;
 }

@@ -57,7 +57,18 @@ export const boards = sqliteTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     color: text('color').notNull(),
+    /** Optional free-text purpose line, shown under the board title. */
+    description: text('description'),
     createdBy: text('created_by').notNull(),
+    /**
+     * Unix ms when the board was archived, null while active. Archived
+     * boards stay fully intact (lists, cards, members, activity) and are
+     * hidden from the Home grid behind an "Archived" disclosure; restoring
+     * just clears this. A real soft-delete would need every query to filter
+     * it — this is only ever consulted by `getHomeData`, and an archived
+     * board still opens read-only by URL.
+     */
+    archivedAt: integer('archived_at'),
     /**
      * 'public' | 'private' (Phase 2, K.17). Only consulted when the parent
      * project is 'public' — a 'private' project overrides this regardless
@@ -153,6 +164,14 @@ export const cards = sqliteTable(
     dueDate: integer('due_date'),
     position: real('position').notNull(),
     createdBy: text('created_by').notNull(),
+    /**
+     * Unix ms when the card was archived, null while active. Archived cards
+     * are excluded from the board payload's `cards` (and so from every list,
+     * count, and drag context) but keep their list/position so a restore
+     * puts them back where they were; they're listed via `getArchivedCards`
+     * for restore/permanent delete.
+     */
+    archivedAt: integer('archived_at'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { sdk } from '@sovereignfs/sdk';
 import { PageContainer } from '@sovereignfs/ui';
@@ -6,6 +7,22 @@ import { requireUser } from '../../_lib/authz';
 import { getDb } from '../../_lib/db';
 import { resolveBoardColor } from '../../_lib/palette';
 import { getBoardData, getCardDetail } from '../../_lib/queries';
+
+/**
+ * The browser tab shows the board's name. Access-gated the same way the
+ * page is — a non-member gets the generic title, never the board's name.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ boardId: string }>;
+}): Promise<Metadata> {
+  const { boardId } = await params;
+  const actor = await requireUser();
+  const db = await getDb();
+  const board = await getBoardData(db, boardId, actor);
+  return { title: board ? board.name : 'Board' };
+}
 
 /**
  * Board route. Membership is enforced by getBoardData itself — a

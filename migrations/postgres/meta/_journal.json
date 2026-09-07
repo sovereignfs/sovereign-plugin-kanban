@@ -36,6 +36,13 @@
       "when": 1787303744047,
       "tag": "0004_inbox_comment_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788766334041,
+      "tag": "0005_archive_and_board_description",
+      "breakpoints": true
     }
   ]
 }

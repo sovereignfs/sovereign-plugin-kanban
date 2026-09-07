@@ -17,6 +17,7 @@ import {
 import {
   addProjectMember,
   deleteProject,
+  leaveProject,
   removeProjectMember,
   searchProjectMemberCandidates,
   updateProjectForm,
@@ -60,6 +61,7 @@ export function ManageProjectDialog({
 }) {
   const toast = useToast();
   const isOwner = project.role === 'owner';
+  const ownerCount = project.members.filter((m) => m.role === 'owner').length;
 
   function onMemberError(message: string): void {
     toast.show({ title: 'Couldn’t update members', message, category: 'error' });
@@ -96,12 +98,15 @@ export function ManageProjectDialog({
                 member={member}
                 currentUser={currentUser}
                 canManage={isOwner}
+                isLastOwner={member.role === 'owner' && ownerCount <= 1}
                 onError={onMemberError}
               />
             ))}
           </ul>
           {isOwner && <MemberPicker projectId={project.id} onError={onMemberError} />}
         </div>
+
+        <LeaveProject project={project} isLastOwner={isOwner && ownerCount <= 1} onLeft={onClose} />
 
         {isOwner && <DangerZone project={project} onDeleted={onClose} />}
       </div>
@@ -191,20 +196,24 @@ function MemberRow({
   member,
   currentUser,
   canManage,
+  isLastOwner,
   onError,
 }: {
   projectId: string;
   member: HomeProject['members'][number];
   currentUser: CurrentUser;
   canManage: boolean;
+  isLastOwner: boolean;
   onError: (message: string) => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [confirmRemove, setConfirmRemove] = useState(false);
   // A one-member lookup array — `member` already carries name/email, so
   // `displayName` resolves it without needing the full member list.
   const name = displayName(member.userId, currentUser, [member]);
   const showEmail = Boolean(member.email) && member.email !== name;
   const isOwnerRow = member.role === 'owner';
+  const isSelf = member.userId === currentUser.id;
 
   function toggleRole(): void {
     startTransition(async () => {
@@ -218,11 +227,17 @@ function MemberRow({
   }
 
   function remove(): void {
+    setConfirmRemove(false);
     startTransition(async () => {
       const result = await removeProjectMember({ projectId, userId: member.userId });
       if (!result.ok) onError(result.error);
     });
   }
+
+  // The last owner can't be demoted or removed (server-enforced too); the
+  // actor's own row offers "Leave project" below the list instead of Remove.
+  const showRoleToggle = canManage && !isLastOwner;
+  const showRemove = canManage && !isSelf && !isLastOwner;
 
   return (
     <li className={styles.memberRow}>
@@ -231,23 +246,109 @@ function MemberRow({
         <Typography variant="body">{name}</Typography>
         {showEmail && <Typography variant="caption">{member.email}</Typography>}
       </div>
-      {canManage ? (
-        <div className={styles.memberRowActions}>
-          <Button variant="ghost" size="sm" disabled={pending} onClick={toggleRole}>
-            {isOwnerRow ? 'Make member' : 'Make owner'}
-          </Button>
-          <Button variant="ghost" size="sm" disabled={pending} onClick={remove}>
-            Remove
-          </Button>
-        </div>
-      ) : (
-        isOwnerRow && (
+      <div className={styles.memberRowActions}>
+        {isOwnerRow && !showRoleToggle && (
           <Typography variant="caption" className={styles.memberRoleBadge}>
             Owner
           </Typography>
-        )
+        )}
+        {showRoleToggle && (
+          <Button variant="ghost" size="sm" disabled={pending} onClick={toggleRole}>
+            {isOwnerRow ? 'Make member' : 'Make owner'}
+          </Button>
+        )}
+        {showRemove && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={pending}
+            onClick={() => setConfirmRemove(true)}
+          >
+            Remove
+          </Button>
+        )}
+      </div>
+      {confirmRemove && (
+        <ConfirmDialog
+          open
+          onClose={() => setConfirmRemove(false)}
+          title={`Remove ${name} from the project?`}
+          message="They also lose access to every board in this project. You can add them back any time."
+          destructive
+          confirmLabel="Remove"
+          onConfirm={remove}
+        />
       )}
     </li>
+  );
+}
+
+/**
+ * Any member can leave a project themselves — except its last owner, who
+ * has to hand ownership on (or delete the project) first. Leaving cascades
+ * to every board in the project, same as being removed.
+ */
+function LeaveProject({
+  project,
+  isLastOwner,
+  onLeft,
+}: {
+  project: HomeProject;
+  isLastOwner: boolean;
+  onLeft: () => void;
+}) {
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <div className={styles.manageSection}>
+      <div className={styles.leaveRow}>
+        <div>
+          <Typography variant="body">Leave this project</Typography>
+          <Typography variant="caption">
+            {isLastOwner
+              ? 'You’re the only owner — make someone else an owner first.'
+              : 'You lose access to every board in it until someone adds you back.'}
+          </Typography>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={isLastOwner}
+          onClick={() => setConfirming(true)}
+        >
+          Leave
+        </Button>
+      </div>
+      {confirming && (
+        <ConfirmDialog
+          open
+          onClose={() => setConfirming(false)}
+          title={`Leave "${project.name}"?`}
+          message="You’ll be removed from the project and every board in it. This can’t be undone by you — an owner would need to add you back."
+          destructive
+          confirmLabel={pending ? 'Leaving…' : 'Leave project'}
+          pending={pending}
+          onConfirm={() => {
+            startTransition(async () => {
+              const result = await leaveProject({ projectId: project.id });
+              if (result.ok) {
+                setConfirming(false);
+                onLeft();
+              } else {
+                toast.show({
+                  title: 'Couldn’t leave project',
+                  message: result.error,
+                  category: 'error',
+                });
+                setConfirming(false);
+              }
+            });
+          }}
+        />
+      )}
+    </div>
   );
 }
 

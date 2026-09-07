@@ -50,7 +50,12 @@ function timeAgo(ts: number): string {
 function categoryIconName(category: string): 'user-round-plus' | 'alert-triangle' | 'layers' {
   const c = category.toLowerCase();
   if (c.includes('user') || c.includes('invite') || c.includes('join')) return 'user-round-plus';
-  if (c.includes('security') || c.includes('session') || c.includes('auth') || c.includes('warning'))
+  if (
+    c.includes('security') ||
+    c.includes('session') ||
+    c.includes('auth') ||
+    c.includes('warning')
+  )
     return 'alert-triangle';
   return 'layers';
 }
@@ -58,7 +63,12 @@ function categoryIconName(category: string): 'user-round-plus' | 'alert-triangle
 function categoryIconClass(category: string, styles: Record<string, string>): string | undefined {
   const c = category.toLowerCase();
   if (c.includes('user') || c.includes('invite') || c.includes('join')) return styles.iconGreen;
-  if (c.includes('security') || c.includes('session') || c.includes('auth') || c.includes('warning'))
+  if (
+    c.includes('security') ||
+    c.includes('session') ||
+    c.includes('auth') ||
+    c.includes('warning')
+  )
     return styles.iconAmber;
   return styles.iconNeutral;
 }
@@ -275,7 +285,10 @@ export function KanbanNotificationBell() {
         <button
           ref={triggerRef}
           type="button"
-          className={[styles.mobileHeaderIconButton, open ? styles.mobileHeaderIconButtonActive : '']
+          className={[
+            styles.mobileHeaderIconButton,
+            open ? styles.mobileHeaderIconButtonActive : '',
+          ]
             .filter(Boolean)
             .join(' ')}
           aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
@@ -356,7 +369,10 @@ export function KanbanNotificationBell() {
         {items.map((item) => (
           <li
             key={item.id}
-            className={[styles.notificationItem, item.readAt != null ? styles.notificationItemRead : '']
+            className={[
+              styles.notificationItem,
+              item.readAt != null ? styles.notificationItemRead : '',
+            ]
               .filter(Boolean)
               .join(' ')}
           >

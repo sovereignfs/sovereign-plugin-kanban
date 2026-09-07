@@ -4,6 +4,7 @@ import Link from 'next/link';
 import styles from '../kanban.module.css';
 import { AppsMenu } from './AppsMenu';
 import { KanbanAccountMenu, type KanbanAccountMenuUser } from './KanbanAccountMenu';
+import type { MobileAppEntry } from './KanbanMobileFooter';
 
 export type KanbanHeaderUser = KanbanAccountMenuUser;
 
@@ -46,10 +47,13 @@ export function KanbanHeader({
   user,
   instanceName,
   isAdmin,
+  apps,
 }: {
   user: KanbanHeaderUser;
   instanceName: string;
   isAdmin: boolean;
+  /** Installed apps for the Apps switcher — the same list the mobile footer's drawer shows. */
+  apps: MobileAppEntry[];
 }) {
   const brandInitial = instanceName.charAt(0).toUpperCase() || 'S';
 
@@ -74,7 +78,7 @@ export function KanbanHeader({
       </div>
 
       <div className={styles.headerRight}>
-        <AppsMenu isAdmin={isAdmin} />
+        <AppsMenu apps={apps} isAdmin={isAdmin} />
         <KanbanAccountMenu user={user} avatarSize="md" />
       </div>
     </header>

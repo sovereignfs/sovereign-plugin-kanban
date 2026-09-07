@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { sdk } from '@sovereignfs/sdk';
 import { PageContainer, PageHeader } from '@sovereignfs/ui';
 import { InboxFeedList } from '../../_components/InboxFeedList';
@@ -16,6 +17,8 @@ import { getInboxFeed } from '../../_lib/queries';
  * be an existing edge case in the deep link itself, not something this page
  * needs to filter out upfront.
  */
+export const metadata: Metadata = { title: 'Inbox' };
+
 export default async function InboxPage() {
   const actor = await requireUser();
   const db = await getDb();

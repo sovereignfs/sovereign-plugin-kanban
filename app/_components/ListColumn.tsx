@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useTransition, type KeyboardEvent } from 'react';
-import { useDroppable, type DraggableAttributes, type DraggableSyntheticListeners } from '@dnd-kit/core';
+import {
+  useDroppable,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+} from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -28,17 +32,32 @@ import { QuickAddCard } from './QuickAddCard';
  * nested sortable context for card drag/drop, and dragging a list by
  * grabbing its body would be ambiguous with dragging the cards inside it.
  * Matches Trello's own behaviour (grab a list by its title bar).
+ *
+ * K.21 — `canEdit` false (a viewer, or an archived board) renders the same
+ * column with every mutation affordance gone: no header drag, no rename,
+ * no options menu, no quick-add, and the tiles inside are inert.
  */
 export function ListColumn({
   list,
   cards,
   query = '',
+  canEdit,
+  dragEnabled = true,
 }: {
   list: BoardList;
   cards: BoardCardSummary[];
   /** K.10 search/filter — `cards` already only contains matches; `query` is
    * just for title-highlighting and the "no matches" placeholder text. */
   query?: string;
+  canEdit: boolean;
+  /**
+   * Whether dragging may start. Separate from `canEdit`: while a search is
+   * active every editing affordance stays available, but dragging is off
+   * (neighbours would be computed from a visibly incomplete list). See
+   * `BoardView`'s `sensors` comment for why this is a per-item flag rather
+   * than an empty sensors array.
+   */
+  dragEnabled?: boolean;
 }) {
   const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -49,17 +68,26 @@ export function ListColumn({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: list.id,
     data: { type: 'list' },
+    disabled: !canEdit || !dragEnabled,
   });
-  const { setNodeRef: setDropRef } = useDroppable({ id: listDropId(list.id) });
+  const { setNodeRef: setDropRef } = useDroppable({
+    id: listDropId(list.id),
+    disabled: !canEdit || !dragEnabled,
+  });
 
   return (
     <div
       ref={setNodeRef}
       className={styles.list}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }}
     >
       <ListHeader
         list={list}
+        canEdit={canEdit}
         renaming={renaming}
         onStartRename={() => setRenaming(true)}
         onStopRename={() => setRenaming(false)}
@@ -69,8 +97,8 @@ export function ListColumn({
         onAddCard={() => setAddingCard(true)}
         onDelete={() => setDeleteOpen(true)}
         cardCount={cards.length}
-        dragAttributes={renaming ? undefined : attributes}
-        dragListeners={renaming ? undefined : listeners}
+        dragAttributes={renaming || !canEdit || !dragEnabled ? undefined : attributes}
+        dragListeners={renaming || !canEdit || !dragEnabled ? undefined : listeners}
       />
 
       <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
@@ -81,20 +109,30 @@ export function ListColumn({
             </Typography>
           )}
           {cards.map((card) => (
-            <CardTile key={card.id} card={card} query={query} />
+            <CardTile
+              key={card.id}
+              card={card}
+              query={query}
+              dragEnabled={canEdit && dragEnabled}
+            />
           ))}
         </div>
       </SortableContext>
 
-      <QuickAddCard listId={list.id} open={addingCard} onOpenChange={setAddingCard} />
+      {canEdit && <QuickAddCard listId={list.id} open={addingCard} onOpenChange={setAddingCard} />}
 
       {deleteOpen && (
         <DeleteListConfirm
           listId={list.id}
           listName={list.name}
-          cardCount={cards.length}
+          // The real count, not the currently rendered (possibly filtered)
+          // subset — with a search active this used to say "and its 1
+          // card" for a list of many.
+          cardCount={list.cardCount}
           onClose={() => setDeleteOpen(false)}
-          onError={(message) => toast.show({ title: 'Couldn’t delete list', message, category: 'error' })}
+          onError={(message) =>
+            toast.show({ title: 'Couldn’t delete list', message, category: 'error' })
+          }
         />
       )}
     </div>
@@ -103,6 +141,7 @@ export function ListColumn({
 
 function ListHeader({
   list,
+  canEdit,
   renaming,
   onStartRename,
   onStopRename,
@@ -116,6 +155,7 @@ function ListHeader({
   dragListeners,
 }: {
   list: BoardList;
+  canEdit: boolean;
   renaming: boolean;
   onStartRename: () => void;
   onStopRename: () => void;
@@ -130,6 +170,14 @@ function ListHeader({
 }) {
   const toast = useToast();
   const [value, setValue] = useState(list.name);
+  // Resync the draft when the list is renamed elsewhere (another member,
+  // or the mobile surface) — React's "adjust state during render when a
+  // prop changes" pattern, so the rename field never opens on a stale name.
+  const [prevName, setPrevName] = useState(list.name);
+  if (list.name !== prevName) {
+    setPrevName(list.name);
+    setValue(list.name);
+  }
   const [pending, startTransition] = useTransition();
 
   function commit(): void {
@@ -179,67 +227,62 @@ function ListHeader({
 
   return (
     <div className={styles.listHeader} {...dragAttributes} {...dragListeners}>
-      <button type="button" className={styles.listName} onClick={onStartRename}>
-        <Typography variant="h4" as="span">
-          {list.name}
-        </Typography>
-      </button>
+      {canEdit ? (
+        <button type="button" className={styles.listName} onClick={onStartRename}>
+          <Typography variant="h4" as="span">
+            {list.name}
+          </Typography>
+        </button>
+      ) : (
+        <span className={styles.listName}>
+          <Typography variant="h4" as="span">
+            {list.name}
+          </Typography>
+        </span>
+      )}
       <Typography variant="caption">{cardCount}</Typography>
       <span className={styles.listHeaderSpacer} />
-      <span className={styles.listOptionsMenu} data-no-dnd>
-        {/* `Popover` + `MenuEntries` directly, not the shared `Menu`
-            component — `Menu`'s desktop path is `Popover` at a fixed 288px
-            width with no way to override it, which read oversized next to
-            this 272px-wide list (nearly as wide as the whole column).
-            `Menu`'s own mobile fallback (a bottom-sheet `Drawer`) isn't
-            needed here either — `ListColumn` only ever renders on desktop;
-            mobile boards use `MobileListSlide`'s own menu instead.
-
-            `align="right"` — the trigger sits at the list's own right edge,
-            so this keeps the panel's own right edge there too, meaning the
-            whole panel (190px, comfortably under this 272px list's own
-            width) stays within this list's bounds rather than spilling into
-            the next one over. An earlier pass tried `align="left"` instead
-            to avoid the panel covering this list's own cards, but that's
-            the wrong tradeoff — overlapping this list's own cards while
-            opening a menu *for this list* reads as normal (Trello does the
-            same); bleeding into an unrelated neighboring list does not.
-            `panelStyle`'s `right` offset gives the panel a bit of its own
-            breathing room from the list's own right edge rather than
-            sitting flush against it (caught live: with no offset, the panel
-            visually touched the list's own card-boundary edge). */}
-        <Popover
-          align="right"
-          width={190}
-          panelStyle={{ right: 'var(--sv-space-2)' }}
-          open={menuOpen}
-          onClose={onMenuClose}
-          aria-label={`${list.name} options`}
-          trigger={
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Options for ${list.name}`}
-              onClick={onMenuTrigger}
-            >
-              <Icon name="ellipsis-vertical" size="sm" aria-hidden={true} />
-            </Button>
-          }
-        >
-          <MenuEntries
-            items={[
-              { label: 'Add card', icon: 'plus', onSelect: onAddCard },
-              { label: 'Rename list', icon: 'pencil', onSelect: onStartRename },
-              { type: 'separator' },
-              { label: 'Delete list', icon: 'trash-2', destructive: true, onSelect: onDelete },
-            ]}
-            onSelect={(entry) => {
-              onMenuClose();
-              entry.onSelect?.();
-            }}
-          />
-        </Popover>
-      </span>
+      {canEdit && (
+        <span className={styles.listOptionsMenu} data-no-dnd>
+          {/* `Popover` + `MenuEntries` directly, not the shared `Menu` —
+              `Menu`'s desktop path is a fixed 288px-wide `Popover`, which
+              read oversized next to this 272px-wide list. `align="right"`
+              keeps the panel within this list's bounds rather than spilling
+              into the neighbouring one; `panelStyle`'s `right` offset gives
+              it breathing room from the list's own edge. */}
+          <Popover
+            align="right"
+            width={190}
+            panelStyle={{ right: 'var(--sv-space-2)' }}
+            open={menuOpen}
+            onClose={onMenuClose}
+            aria-label={`${list.name} options`}
+            trigger={
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Options for ${list.name}`}
+                onClick={onMenuTrigger}
+              >
+                <Icon name="ellipsis-vertical" size="sm" aria-hidden={true} />
+              </Button>
+            }
+          >
+            <MenuEntries
+              items={[
+                { label: 'Add card', icon: 'plus', onSelect: onAddCard },
+                { label: 'Rename list', icon: 'pencil', onSelect: onStartRename },
+                { type: 'separator' },
+                { label: 'Delete list', icon: 'trash-2', destructive: true, onSelect: onDelete },
+              ]}
+              onSelect={(entry) => {
+                onMenuClose();
+                entry.onSelect?.();
+              }}
+            />
+          </Popover>
+        </span>
+      )}
     </div>
   );
 }

@@ -7,6 +7,8 @@ export type ActivityType =
   | 'card.created'
   | 'card.moved'
   | 'card.deleted'
+  | 'card.archived'
+  | 'card.restored'
   | 'field.changed'
   | 'assignee.added'
   | 'assignee.removed'
@@ -15,12 +17,19 @@ export type ActivityType =
   | 'due.changed'
   | 'checklist.changed'
   | 'comment.added'
+  | 'comment.edited'
+  | 'comment.deleted'
+  | 'label.updated'
   | 'list.created'
   | 'list.renamed'
   | 'list.deleted'
   | 'board.created'
+  | 'board.updated'
+  | 'board.archived'
+  | 'board.restored'
   | 'member.added'
-  | 'member.removed';
+  | 'member.removed'
+  | 'member.role_changed';
 
 export interface ActivityInput {
   tenantId: string;

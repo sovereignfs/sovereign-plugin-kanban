@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { sdk } from '@sovereignfs/sdk';
 import { ToastProvider } from '@sovereignfs/ui';
@@ -5,10 +6,14 @@ import { KanbanHeader } from './_components/KanbanHeader';
 import { KanbanMobileFooter, type MobileAppEntry } from './_components/KanbanMobileFooter';
 import { KanbanMobileHeader } from './_components/KanbanMobileHeader';
 import { requireUser } from './_lib/authz';
-import { getDb } from './_lib/db';
 import { registerPortabilityHandlers } from './_lib/portability';
-import { hasUnseenInboxActivity } from './_lib/queries';
+import { hasUnseenInboxActivityCached } from './_lib/request-cache';
 import styles from './kanban.module.css';
+
+/** Page titles: "Kanban" on Home, "<board> · Kanban" on a board, etc. */
+export const metadata: Metadata = {
+  title: { default: 'Kanban', template: '%s · Kanban' },
+};
 
 /**
  * Plugin shell for every page: a top header (web) + a self-rendered mobile
@@ -61,9 +66,9 @@ export default async function KanbanLayout({ children }: { children: ReactNode }
   }
 
   const actor = await requireUser();
-  const db = await getDb();
   const [hasUnseenInbox, availablePlugins, session, instanceName] = await Promise.all([
-    hasUnseenInboxActivity(db, actor),
+    // Request-memoized — `(home)/layout.tsx` asks for the same value.
+    hasUnseenInboxActivityCached(actor.userId, actor.tenantId),
     sdk.plugins.list(),
     sdk.auth.getSession(),
     // Best-effort: the header's brand badge is a cosmetic detail, not core
@@ -129,6 +134,7 @@ export default async function KanbanLayout({ children }: { children: ReactNode }
           }}
           instanceName={instanceName}
           isAdmin={isAdmin}
+          apps={apps}
         />
         <KanbanMobileHeader
           user={{

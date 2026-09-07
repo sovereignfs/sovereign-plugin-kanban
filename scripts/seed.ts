@@ -212,6 +212,8 @@ async function main(): Promise<void> {
     projectId: string;
     name: string;
     color: string;
+    description?: string;
+    archivedAt?: number;
     createdBy: string;
     createdAt: number;
     members: Array<{ userId: string; role: 'owner' | 'member' }>;
@@ -222,6 +224,8 @@ async function main(): Promise<void> {
       projectId: input.projectId,
       name: input.name,
       color: input.color,
+      description: input.description ?? null,
+      archivedAt: input.archivedAt ?? null,
       createdBy: input.createdBy,
       createdAt: input.createdAt,
       updatedAt: input.createdAt,
@@ -315,6 +319,7 @@ async function main(): Promise<void> {
     title: string;
     description?: string;
     dueDate?: number;
+    archivedAt?: number;
     createdBy: string;
     createdAt: number;
     labelIds?: string[];
@@ -332,6 +337,7 @@ async function main(): Promise<void> {
       title: spec.title,
       description: spec.description ?? null,
       dueDate: spec.dueDate ?? null,
+      archivedAt: spec.archivedAt ?? null,
       position,
       createdBy: spec.createdBy,
       createdAt: spec.createdAt,
@@ -469,6 +475,7 @@ async function main(): Promise<void> {
     projectId: PROJECT_LAUNCH,
     name: 'Sprint 12',
     color: 'sky',
+    description: 'The active two-week sprint — every card scenario lives here.',
     createdBy: users.owner.id,
     createdAt: daysAgo(20),
     members: [
@@ -683,15 +690,53 @@ async function main(): Promise<void> {
   await addCard({ id: 'seed-scenario-card-sqldsetup', boardId: boardInfra, listId: listInfraDone, title: 'Stand up dev sqld container', createdBy: users.admin.id, createdAt: daysAgo(15) }, nextPos());
   await addCard({ id: 'seed-scenario-card-vpcsetup', boardId: boardInfra, listId: listInfraDone, title: 'Provision production VPC', createdBy: users.admin.id, createdAt: daysAgo(14) }, nextPos());
 
+  // ---------------------------------------------------------------------
+  // Archive coverage — an archived card (restorable from the board menu's
+  // "Archived cards" panel) and an archived board (behind Home's own
+  // "archived boards" disclosure, read-only until restored).
+  // ---------------------------------------------------------------------
+  pos = 100;
+  await addCard(
+    {
+      id: 'seed-scenario-card-archived',
+      boardId: boardSprint,
+      listId: listDone,
+      title: 'Old spike: evaluate a third-party board widget',
+      description: 'Archived rather than deleted — restore it from the board menu.',
+      archivedAt: daysAgo(3),
+      createdBy: users.owner.id,
+      createdAt: daysAgo(18),
+    },
+    nextPos(),
+  );
+
+  const boardArchived = 'seed-scenario-board-archived';
+  await addBoard({
+    id: boardArchived,
+    projectId: PROJECT_LAUNCH,
+    name: 'Launch Retro (archived)',
+    color: 'stone',
+    description: 'Wrapped up — kept for reference.',
+    archivedAt: daysAgo(2),
+    createdBy: users.owner.id,
+    createdAt: daysAgo(30),
+    members: [{ userId: users.owner.id, role: 'owner' }],
+  });
+  const listRetro = 'seed-scenario-list-retro';
+  await addList({ id: listRetro, boardId: boardArchived, name: 'What went well', position: positionAfter(undefined), createdBy: users.owner.id, createdAt: daysAgo(30) });
+  pos = 0;
+  await addCard({ id: 'seed-scenario-card-retro1', boardId: boardArchived, listId: listRetro, title: 'Shipping cadence held up', createdBy: users.owner.id, createdAt: daysAgo(29) }, nextPos());
+
   client.close();
 
   console.log('Seed complete.');
-  console.log(`  ${activityCount} activity rows across ${3} projects, ${4} boards.`);
+  console.log(`  ${activityCount} activity rows across ${3} projects, ${5} boards (one archived).`);
   console.log('');
   console.log('Sign in as owner@sovereign.local (password: sovereign) to see:');
   console.log('  - "Product Launch" and "Marketing" under My projects (owner)');
   console.log('  - "Platform Engineering" under Shared with me (created by admin@)');
   console.log('  - A fully unseen Inbox — no lastSeenAt row was written for this user.');
+  console.log('  - An archived board (Home disclosure) and an archived card (Sprint 12 → board menu).');
 }
 
 await main();

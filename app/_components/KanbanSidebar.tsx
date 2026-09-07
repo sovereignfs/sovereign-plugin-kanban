@@ -67,7 +67,9 @@ export function KanbanSidebar({
           >
             <Icon name={item.icon} size="sm" aria-hidden={true} />
             {item.label}
-            {showUnseenBadge && <span className={styles.sidebarUnseenBadge} aria-label="Unseen activity" />}
+            {showUnseenBadge && (
+              <span className={styles.sidebarUnseenBadge} aria-label="Unseen activity" />
+            )}
           </Link>
         );
       })}

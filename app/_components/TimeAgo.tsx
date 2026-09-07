@@ -27,10 +27,24 @@ import { timeAgo } from '../_lib/time';
  */
 export function TimeAgo({ ms }: { ms: number }) {
   const [label, setLabel] = useState('');
+  const [absolute, setAbsolute] = useState('');
 
   useEffect(() => {
     setLabel(timeAgo(ms));
+    // The exact timestamp as a tooltip — "3d ago" alone loses the day and
+    // time, which matters when reading back a comment thread. Also
+    // deferred to post-mount (locale-dependent formatting, same hydration
+    // reasoning as the relative label).
+    setAbsolute(
+      new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
+        new Date(ms),
+      ),
+    );
   }, [ms]);
 
-  return <>{label}</>;
+  return (
+    <time dateTime={new Date(ms).toISOString()} title={absolute}>
+      {label}
+    </time>
+  );
 }

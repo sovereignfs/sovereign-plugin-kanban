@@ -174,6 +174,20 @@ them during implementation:
 - **Web only for Phase 2.** Read-only viewing ships on web first; mobile
   parity is a documented follow-up, not part of this phase — same
   "build order: web first, then mobile" principle as Phase 1 itself.
+  _Shipped: mobile came along in the same pass after all (`0.27.0`) — the
+  `canEdit` flag threads through `MobileBoardView`/`MobileListSlide` too,
+  since leaving one surface with live mutation affordances that fail
+  server-side would have been worse than the small extra scope._
+- **Board administration is open to project owners** (`0.27.0`, K.20):
+  settings, membership, archive, and delete. This is deliberately *not* a
+  content-edit path — a project owner still cannot add a list or edit a
+  card on a board they don't belong to, exactly as the rule above says.
+  Without it, a board whose only owner left the project became
+  unmanageable by anyone.
+- **Archive is the reversible half of delete** (`0.27.0`): both cards and
+  boards can be archived and restored. An archived board is read-only for
+  everyone, its own owner included — the same `canEdit` path a viewer
+  takes.
 
 See `SPEC.md`'s Tasks section (`K.17`–`K.22`) for the technical breakdown and
 `ROADMAP.md` for build order.

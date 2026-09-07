@@ -19,7 +19,13 @@ function describeInboxItem(kind: InboxItem['kind']): string {
  * Component can render a Client Component as a child with no `'use client'`
  * of its own — standard RSC composition, not an exception to the rule above.
  */
-export function InboxFeedList({ feed, currentUser }: { feed: InboxFeed; currentUser: CurrentUser }) {
+export function InboxFeedList({
+  feed,
+  currentUser,
+}: {
+  feed: InboxFeed;
+  currentUser: CurrentUser;
+}) {
   if (feed.items.length === 0) {
     return (
       <EmptyState

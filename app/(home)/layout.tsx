@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { KanbanSidebar } from '../_components/KanbanSidebar';
 import { requireUser } from '../_lib/authz';
-import { getDb } from '../_lib/db';
-import { getHomeData, hasUnseenInboxActivity } from '../_lib/queries';
+import { getHomeDataCached, hasUnseenInboxActivityCached } from '../_lib/request-cache';
 import styles from '../kanban.module.css';
 
 /**
@@ -13,9 +12,10 @@ import styles from '../kanban.module.css';
  *
  * Also fetches `getHomeData` for the sidebar's "My projects"/"Shared with
  * me" sections — the same query `(home)/page.tsx` runs for the Home page
- * body itself. A second round trip rather than threading the data down,
- * matching this layout's own existing pattern for `hasUnseenInboxActivity`
- * (also independently fetched by both the layout and Inbox's page).
+ * body itself. Both go through the request-memoized wrappers in
+ * `request-cache.ts`, so the layout and the page share one DB round trip
+ * (and one directory resolution) per render instead of each running their
+ * own copy.
  *
  * No `currentUser` fetch here — the sidebar is pure navigation now (no
  * per-row dialogs needing display names). `(home)/page.tsx` fetches its own
@@ -23,10 +23,9 @@ import styles from '../kanban.module.css';
  */
 export default async function KanbanHomeLayout({ children }: { children: ReactNode }) {
   const actor = await requireUser();
-  const db = await getDb();
   const [hasUnseenInbox, projects] = await Promise.all([
-    hasUnseenInboxActivity(db, actor),
-    getHomeData(db, actor),
+    hasUnseenInboxActivityCached(actor.userId, actor.tenantId),
+    getHomeDataCached(actor.userId, actor.tenantId),
   ]);
 
   return (

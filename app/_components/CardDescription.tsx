@@ -10,8 +10,9 @@ import styles from '../kanban.module.css';
  * Click-to-edit with an explicit Save/Cancel, not blur-commit — a long
  * description draft must survive a stray click (e.g. into a rendered
  * Markdown link) rather than silently committing or discarding.
+ * `canEdit` false (K.21) renders the description as plain content.
  */
-export function CardDescription({ card }: { card: CardDetail }) {
+export function CardDescription({ card, canEdit }: { card: CardDetail; canEdit: boolean }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(card.description ?? '');
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +35,14 @@ export function CardDescription({ card }: { card: CardDetail }) {
     });
   }
 
+  const rendered = card.description ? (
+    <Markdown content={card.description} preserveLineBreaks />
+  ) : (
+    <Typography variant="body" className={styles.descriptionPlaceholder}>
+      {canEdit ? 'Add a description…' : 'No description.'}
+    </Typography>
+  );
+
   return (
     <section className={styles.cardSection}>
       <Typography variant="label">Description</Typography>
@@ -45,8 +54,12 @@ export function CardDescription({ card }: { card: CardDetail }) {
             rows={5}
             value={value}
             disabled={pending}
+            aria-label="Description"
             onChange={(e) => setValue(e.target.value)}
           />
+          <Typography variant="caption" className={styles.descriptionPlaceholder}>
+            Markdown is supported — **bold**, *italics*, lists, and links.
+          </Typography>
           {error && <p className={styles.formError}>{error}</p>}
           <div className={styles.composerActions}>
             <Button variant="primary" size="sm" onClick={save} loading={pending}>
@@ -62,7 +75,7 @@ export function CardDescription({ card }: { card: CardDetail }) {
             </Button>
           </div>
         </div>
-      ) : (
+      ) : canEdit ? (
         <button
           type="button"
           className={
@@ -72,14 +85,10 @@ export function CardDescription({ card }: { card: CardDetail }) {
           }
           onClick={startEdit}
         >
-          {card.description ? (
-            <Markdown content={card.description} preserveLineBreaks />
-          ) : (
-            <Typography variant="body" className={styles.descriptionPlaceholder}>
-              Add a description…
-            </Typography>
-          )}
+          {rendered}
         </button>
+      ) : (
+        <div className={styles.descriptionView}>{rendered}</div>
       )}
     </section>
   );

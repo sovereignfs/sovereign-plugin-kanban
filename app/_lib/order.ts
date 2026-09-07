@@ -29,7 +29,8 @@ export function seedOrder(
   return { listOrder: lists.map((l) => l.id), cardOrderByList };
 }
 
-function findListOf(state: OrderState, cardId: string): string | undefined {
+/** The list currently holding `cardId` in `state`, if any. */
+export function findListOf(state: OrderState, cardId: string): string | undefined {
   return Object.keys(state.cardOrderByList).find((listId) =>
     state.cardOrderByList[listId]?.includes(cardId),
   );

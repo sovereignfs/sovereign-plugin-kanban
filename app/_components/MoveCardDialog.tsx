@@ -42,7 +42,12 @@ export function MoveCardDialog({
     const { prevCardId, nextCardId } = topBottomNeighbors(targetCards, position);
 
     startTransition(async () => {
-      const result = await moveCard({ cardId: card.id, toListId: targetListId, prevCardId, nextCardId });
+      const result = await moveCard({
+        cardId: card.id,
+        toListId: targetListId,
+        prevCardId,
+        nextCardId,
+      });
       if (result.ok) {
         onClose();
       } else {

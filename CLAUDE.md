@@ -42,7 +42,7 @@ assumptions:
 - [`CONCEPT.md`](CONCEPT.md) — product concept and interaction-model decisions
   (web vs. mobile layout, click/tap-to-open, no drag handles).
 - [`SPEC.md`](SPEC.md) — technical spec: architecture, data model, and every
-  task (`K.1`–`K.16`) with its goal, deliverables, dependencies, and review
+  task (`K.1`–`K.24`) with its goal, deliverables, dependencies, and review
   checklist. Its `Status` section carries a detailed narrative for every
   completed task, including bugs found live and scope decisions — read it,
   don't just skim the checkbox.
@@ -102,6 +102,23 @@ platform repo's `docs/architecture-rules.md`.
   insertion, renormalize the whole scope in one transaction when a gap
   underflows. A reorder/move is exactly one row write, never a multi-row
   shuffle.
+- **Coerce every timestamp at the read boundary** (`_lib/timestamps.ts`'s
+  `asMs`/`asMsOrNull`). Application code queries through the sqlite-core
+  schema on both dialects; Postgres timestamp columns are `bigint`, and
+  node-postgres returns `int8` as a **string** that the sqlite-core
+  `integer` column does not map. An uncoerced value reaches `new Date()` as
+  Invalid Date and makes `Intl.DateTimeFormat` throw — a crashed page, and
+  invisible on SQLite. Same class of bug as `0.17.1`'s write-side overflow.
+- **Read access and edit access are different checks.** Reads go through
+  `authz.ts`'s `getBoardAccess()`/`requireCardView()`, which accept the
+  `'viewer'` tier; content mutations use `requireBoardMember`/
+  `requireListAccess`/`requireCardAccess` (explicit membership, and never
+  an archived board); board *administration* uses `requireBoardManager()`
+  (board owner or project owner). Adding a read action that inner-joins
+  `kanban_board_members` re-introduces the bug K.24 fixed.
+- **Validate in the action, not only the form wrapper.** The `*Form`
+  wrappers at the bottom of `actions.ts` are convenience adapters; the
+  plain action beside them is just as reachable by a direct POST.
 - **Design system only:** components and semantic `--sv-*` tokens from
   `@sovereignfs/ui`, never hardcoded colors or bespoke primitives —
   `pnpm design:tokens:check` (run from the monorepo root) enforces this.
@@ -125,3 +142,7 @@ user-facing UI strings.
 Current manifest version: see `manifest.json` / `ROADMAP.md`'s header. Task
 history and the reasoning behind every completed task lives in `SPEC.md`'s
 `Status` section — that's the changelog; don't duplicate it here.
+
+Phase 2 is complete except `K.22` (a two-user, end-to-end pass over
+CONCEPT.md's visibility matrix with a second real account — unit tests and
+a single-user browser session don't discharge it).

@@ -3,7 +3,12 @@
 import { useActionState, useState } from 'react';
 import { ColorPicker, Dialog, FormField, Input, Textarea, Typography } from '@sovereignfs/ui';
 import { createBoardForm, createProjectForm } from '../actions';
-import { BOARD_COLOR_NONE, BOARD_COLORS, DEFAULT_BOARD_COLOR, boardColorValue } from '../_lib/palette';
+import {
+  BOARD_COLOR_NONE,
+  BOARD_COLORS,
+  DEFAULT_BOARD_COLOR,
+  boardColorValue,
+} from '../_lib/palette';
 import type { HomeProject } from '../_lib/queries';
 import styles from '../kanban.module.css';
 import { DialogActions, useCloseOnSuccess } from './form-dialog';
@@ -68,10 +73,16 @@ export function NewBoardDialog({
         <input type="hidden" name="color" value={color} />
         <FormField label="Name" required>
           {(field) => (
-            <Input
+            <Input {...field} name="name" placeholder="e.g. Website relaunch" disabled={pending} />
+          )}
+        </FormField>
+        <FormField label="Description" hint="Optional">
+          {(field) => (
+            <Textarea
               {...field}
-              name="name"
-              placeholder="e.g. Website relaunch"
+              name="description"
+              rows={2}
+              placeholder="What is this board for?"
               disabled={pending}
             />
           )}

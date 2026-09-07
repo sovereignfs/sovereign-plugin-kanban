@@ -29,6 +29,13 @@
       "when": 1787303739285,
       "tag": "0003_inbox_comment_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788766333263,
+      "tag": "0004_archive_and_board_description",
+      "breakpoints": true
     }
   ]
 }

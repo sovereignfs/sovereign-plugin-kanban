@@ -40,10 +40,13 @@ export function MobileListSlide({
   list,
   cards,
   cardHrefFor,
+  canEdit,
 }: {
   list: BoardList;
   cards: BoardCardSummary[];
   cardHrefFor: (cardId: string) => string;
+  /** K.21 — false hides rename/menu/quick-add and disables long-press reorder. */
+  canEdit: boolean;
 }) {
   const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -54,7 +57,10 @@ export function MobileListSlide({
 
   const cardById = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
   const baseOrder = useMemo(() => cards.map((c) => c.id), [cards]);
-  const [order, dispatchOrder] = useOptimistic(baseOrder, (_state: string[], next: string[]) => next);
+  const [order, dispatchOrder] = useOptimistic(
+    baseOrder,
+    (_state: string[], next: string[]) => next,
+  );
   const [, startReorderTransition] = useTransition();
 
   const orderedCards = order
@@ -98,6 +104,7 @@ export function MobileListSlide({
               already-resolved props, not fetched inside this component. */}
           <MobileListHeader
             list={list}
+            canEdit={canEdit}
             renaming={renaming}
             onStartRename={() => setRenaming(true)}
             onStopRename={() => setRenaming(false)}
@@ -115,13 +122,22 @@ export function MobileListSlide({
             )}
             <DndContext
               id={`mobile-list-dnd-${list.id}`}
+              // Constant array — see `BoardView`'s own `sensors` comment:
+              // swapping in an empty one changes a dnd-kit `useEffect`
+              // dependency array's size between renders. Each tile's
+              // `dragEnabled` is what actually disables dragging.
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd}
             >
               <SortableContext items={order} strategy={verticalListSortingStrategy}>
                 {orderedCards.map((card) => (
-                  <MobileCardTile key={card.id} card={card} href={cardHrefFor(card.id)} />
+                  <MobileCardTile
+                    key={card.id}
+                    card={card}
+                    href={cardHrefFor(card.id)}
+                    dragEnabled={canEdit}
+                  />
                 ))}
               </SortableContext>
             </DndContext>
@@ -137,7 +153,9 @@ export function MobileListSlide({
               children of the one capped box) so the trigger stays visible
               right under the cards rather than pinned to the whole slide's
               own bottom edge. */}
-          <QuickAddCard listId={list.id} open={addingCard} onOpenChange={setAddingCard} />
+          {canEdit && (
+            <QuickAddCard listId={list.id} open={addingCard} onOpenChange={setAddingCard} />
+          )}
         </div>
       </SwipableMobileCarouselSlideBody>
 
@@ -145,9 +163,11 @@ export function MobileListSlide({
         <DeleteListConfirm
           listId={list.id}
           listName={list.name}
-          cardCount={cards.length}
+          cardCount={list.cardCount}
           onClose={() => setDeleteOpen(false)}
-          onError={(message) => toast.show({ title: 'Couldn’t delete list', message, category: 'error' })}
+          onError={(message) =>
+            toast.show({ title: 'Couldn’t delete list', message, category: 'error' })
+          }
         />
       )}
     </>
@@ -156,6 +176,7 @@ export function MobileListSlide({
 
 function MobileListHeader({
   list,
+  canEdit,
   renaming,
   onStartRename,
   onStopRename,
@@ -166,6 +187,7 @@ function MobileListHeader({
   cardCount,
 }: {
   list: BoardList;
+  canEdit: boolean;
   renaming: boolean;
   onStartRename: () => void;
   onStopRename: () => void;
@@ -177,6 +199,12 @@ function MobileListHeader({
 }) {
   const toast = useToast();
   const [value, setValue] = useState(list.name);
+  // Resync the draft when the list is renamed elsewhere (see ListColumn).
+  const [prevName, setPrevName] = useState(list.name);
+  if (list.name !== prevName) {
+    setPrevName(list.name);
+    setValue(list.name);
+  }
   const [pending, startTransition] = useTransition();
 
   function commit(): void {
@@ -205,6 +233,19 @@ function MobileListHeader({
       return;
     }
     commitHandlers.onKeyDown(e);
+  }
+
+  if (!canEdit) {
+    return (
+      <div className={styles.mobileListHeaderRow}>
+        <span className={styles.mobileListName}>
+          <Typography variant="h4" as="span">
+            {list.name}
+          </Typography>
+          <Typography variant="caption">{cardCount}</Typography>
+        </span>
+      </div>
+    );
   }
 
   if (renaming) {

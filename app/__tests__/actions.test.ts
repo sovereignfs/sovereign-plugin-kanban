@@ -92,7 +92,7 @@ async function setup(): Promise<{ projectId: string; boardId: string; listId: st
   actAs(owner);
   expect((await actions.createProject({ name: 'P1' })).ok).toBe(true);
   const project = must((await t.db.select().from(schema.projects))[0], 'project');
-  expect((await actions.createBoard({ projectId: project.id, name: 'B1', color: 'grey' })).ok).toBe(
+  expect((await actions.createBoard({ projectId: project.id, name: 'B1', color: 'sky' })).ok).toBe(
     true,
   );
   const board = must((await t.db.select().from(schema.boards))[0], 'board');
@@ -126,7 +126,7 @@ describe('authorization — non-members and non-creators are denied without side
       ok: false,
       error: 'Project not found.',
     });
-    expect(await actions.createBoard({ projectId, name: 'X', color: 'red' })).toEqual({
+    expect(await actions.createBoard({ projectId, name: 'X', color: 'clay' })).toEqual({
       ok: false,
       error: 'Project not found.',
     });
@@ -217,9 +217,15 @@ describe('project & board access — view vs. edit (K.18)', () => {
     expect(board?.lists).toHaveLength(1);
 
     actAs(outsider);
+    // Content stays off-limits (CONCEPT.md: project ownership never grants
+    // edit access to a board's content)…
     expect((await actions.createList({ boardId, name: 'Should be denied' })).ok).toBe(false);
-    expect((await actions.updateBoard({ boardId, name: 'Renamed' })).ok).toBe(false);
     expect(await t.db.select().from(schema.lists)).toHaveLength(1);
+    // …but board *administration* (settings, membership, archive/delete) is
+    // open to a project owner (K.20), so a board whose owner left never
+    // becomes unmanageable.
+    expect((await actions.updateBoard({ boardId, name: 'Renamed' })).ok).toBe(true);
+    expect(must((await t.db.select().from(schema.boards))[0], 'board').name).toBe('Renamed');
   });
 
   it('a project member sees a public board in a public project read-only', async () => {
@@ -380,6 +386,7 @@ describe('mutations record activity and maintain ordering', () => {
     expect(deletion.cardId).toBeNull();
     expect(JSON.parse(must(deletion.payload ?? undefined, 'deletion payload'))).toEqual({
       cardId: c2.id,
+      title: 'C2',
     });
     // C1's creation row still points at the living card.
     expect(activityRows.some((a) => a.type === 'card.created' && a.cardId === c1.id)).toBe(true);
@@ -473,7 +480,7 @@ describe('mutations record activity and maintain ordering', () => {
       (await t.db.select().from(schema.projects)).find((p) => p.name === 'P2'),
       'P2',
     );
-    expect((await actions.createBoard({ projectId: p2.id, name: 'B2', color: 'blue' })).ok).toBe(
+    expect((await actions.createBoard({ projectId: p2.id, name: 'B2', color: 'sage' })).ok).toBe(
       true,
     );
     const b2 = must(
@@ -551,7 +558,7 @@ describe('labels (K.6)', () => {
       (await t.db.select().from(schema.projects)).find((p) => p.name === 'P2'),
       'P2',
     );
-    expect((await actions.createBoard({ projectId: p2.id, name: 'B2', color: 'blue' })).ok).toBe(
+    expect((await actions.createBoard({ projectId: p2.id, name: 'B2', color: 'sage' })).ok).toBe(
       true,
     );
     const b2 = must(
@@ -962,12 +969,12 @@ describe('board members & share (K.9)', () => {
     expect(activityTypes).toContain('member.removed');
   });
 
-  it('rejects removing the owner, and removing a non-member', async () => {
+  it('rejects removing the last owner, and removing a non-member', async () => {
     const { boardId } = await setup();
     actAs(owner);
     expect(await actions.removeBoardMember({ boardId, userId: owner.id })).toEqual({
       ok: false,
-      error: 'The owner can’t be removed — delete the board instead.',
+      error: 'A board needs at least one owner — make someone else an owner first.',
     });
     expect(await actions.removeBoardMember({ boardId, userId: outsider.id })).toEqual({
       ok: false,
@@ -1094,28 +1101,52 @@ describe('project members & share (K.19)', () => {
     expect(harness.sentNotifications).toHaveLength(0);
   });
 
-  it('removes a member without touching their independent board access', async () => {
-    const { projectId, boardId } = await setup();
+  it('removing a member cascades to their board access and card assignments in that project', async () => {
+    const { projectId, boardId, listId } = await setup();
     actAs(owner);
     registerDirectoryUser({ id: newcomer.id, email: 'newcomer@example.com', name: 'Newcomer' });
     expect((await actions.addProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
-    // Separately, also add them to the board — a board_members row is
-    // independent access, unaffected by project-level removal (K.19's
-    // deliberate no-cascade design, documented on removeProjectMember).
-    await t.db.insert(schema.boardMembers).values({
-      boardId,
-      userId: newcomer.id,
-      tenantId: newcomer.tenantId,
-      role: 'member',
-      addedBy: owner.id,
-      createdAt: Date.now(),
-    });
+    expect((await actions.addBoardMember({ boardId, userId: newcomer.id })).ok).toBe(true);
+    expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    expect((await actions.assignMember({ cardId: card.id, userId: newcomer.id })).ok).toBe(true);
+
+    // A board in a *different* project is untouched.
+    expect((await actions.createProject({ name: 'Other' })).ok).toBe(true);
+    const other = must(
+      (await t.db.select().from(schema.projects)).find((p) => p.name === 'Other'),
+      'other project',
+    );
+    expect((await actions.createBoard({ projectId: other.id, name: 'OB', color: 'sky' })).ok).toBe(
+      true,
+    );
+    const otherBoard = must(
+      (await t.db.select().from(schema.boards)).find((b) => b.name === 'OB'),
+      'other board',
+    );
+    expect((await actions.addProjectMember({ projectId: other.id, userId: newcomer.id })).ok).toBe(
+      true,
+    );
+    expect((await actions.addBoardMember({ boardId: otherBoard.id, userId: newcomer.id })).ok).toBe(
+      true,
+    );
 
     expect((await actions.removeProjectMember({ projectId, userId: newcomer.id })).ok).toBe(true);
-    expect(await t.db.select().from(schema.projectMembers)).toHaveLength(1);
-    // Still a board member — the removal didn't cascade.
+    // Board membership in this project is gone (it used to linger, leaving
+    // the user with live edit access to a board that had vanished from
+    // their Home page), and so is their assignment on its cards…
+    const memberships = await t.db.select().from(schema.boardMembers);
+    expect(memberships.some((m) => m.boardId === boardId && m.userId === newcomer.id)).toBe(false);
+    expect(await t.db.select().from(schema.cardAssignees)).toHaveLength(0);
+    // …with a `member.removed` row narrating it on that board.
     expect(
-      (await t.db.select().from(schema.boardMembers)).some((m) => m.userId === newcomer.id),
+      (await t.db.select().from(schema.activity)).some(
+        (a) => a.boardId === boardId && a.type === 'member.removed',
+      ),
+    ).toBe(true);
+    // The other project's board membership is untouched.
+    expect(
+      memberships.some((m) => m.boardId === otherBoard.id && m.userId === newcomer.id),
     ).toBe(true);
   });
 
@@ -1426,5 +1457,441 @@ describe('inbox (K.11)', () => {
     actAs(owner);
     await actions.markInboxSeen();
     expect(await hasUnseenInboxActivity(t.db, ownerActor)).toBe(false);
+  });
+});
+
+describe('viewer read access (K.21)', () => {
+  const viewer = { id: 'user-viewer', tenantId: 'default' };
+
+  async function setupViewer(): Promise<{ boardId: string; cardId: string }> {
+    const { projectId, boardId, listId } = await setup();
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'Seen by viewer' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    registerDirectoryUser({ id: viewer.id, email: 'viewer@example.com', name: 'Viewer' });
+    expect((await actions.addProjectMember({ projectId, userId: viewer.id })).ok).toBe(true);
+    return { boardId, cardId: card.id };
+  }
+
+  it('a viewer can open a card on a board they can only view (the overlay used to render nothing)', async () => {
+    const { boardId, cardId } = await setupViewer();
+    const { getBoardData, getCardDetail } = await import('../_lib/queries');
+    const actor = { userId: viewer.id, tenantId: viewer.tenantId };
+    expect((await getBoardData(t.db, boardId, actor))?.role).toBe('viewer');
+    const detail = await getCardDetail(t.db, cardId, actor);
+    expect(detail?.title).toBe('Seen by viewer');
+    expect(typeof detail?.createdAt).toBe('number');
+  });
+
+  it('a viewer can page card activity and read the board feed, but not mutate', async () => {
+    const { boardId, cardId } = await setupViewer();
+    actAs(viewer);
+    const activity = await actions.getMoreCardActivity({
+      cardId,
+      cursor: { createdAt: Date.now() + 1000, id: 'zzz' },
+    });
+    expect(activity.ok).toBe(true);
+    const feed = await actions.getBoardActivity({ boardId });
+    expect(feed.ok).toBe(true);
+    if (feed.ok) expect(feed.items.map((i) => i.type)).toContain('card.created');
+    expect((await actions.updateCard({ cardId, title: 'nope' })).ok).toBe(false);
+    expect((await actions.addComment({ cardId, body: 'nope' })).ok).toBe(false);
+  });
+
+  it('an outsider still gets nothing from the read actions', async () => {
+    const { boardId, cardId } = await setupViewer();
+    actAs(outsider);
+    expect((await actions.getBoardActivity({ boardId })).ok).toBe(false);
+    expect((await actions.listArchivedCards({ boardId })).ok).toBe(false);
+    const { getCardDetail } = await import('../_lib/queries');
+    expect(await getCardDetail(t.db, cardId, { userId: outsider.id, tenantId: 'default' })).toBeNull();
+  });
+});
+
+describe('input validation on the plain actions (not just the form wrappers)', () => {
+  it('rejects an unknown board colour on create and update', async () => {
+    const { projectId, boardId } = await setup();
+    actAs(owner);
+    expect(await actions.createBoard({ projectId, name: 'X', color: 'javascript:alert(1)' })).toEqual({
+      ok: false,
+      error: 'Pick a color for the board.',
+    });
+    expect(await actions.updateBoard({ boardId, color: 'red' })).toEqual({
+      ok: false,
+      error: 'Pick a color for the board.',
+    });
+    // Curated ids, the 'none' sentinel, and a strict 6-digit hex all pass.
+    expect((await actions.updateBoard({ boardId, color: 'none' })).ok).toBe(true);
+    expect((await actions.updateBoard({ boardId, color: '#AbCdEf' })).ok).toBe(true);
+  });
+
+  it('rejects an unknown project or board visibility', async () => {
+    const { projectId, boardId } = await setup();
+    actAs(owner);
+    expect(
+      await actions.updateProject({ projectId, visibility: 'friends' as unknown as 'public' }),
+    ).toEqual({ ok: false, error: 'Visibility must be public or private.' });
+    expect(
+      await actions.updateBoard({ boardId, visibility: 'friends' as unknown as 'public' }),
+    ).toEqual({ ok: false, error: 'Visibility must be public or private.' });
+    expect((await actions.updateBoard({ boardId, visibility: 'private' })).ok).toBe(true);
+    expect(must((await t.db.select().from(schema.boards))[0], 'board').visibility).toBe('private');
+  });
+
+  it('rejects a non-integer due date and an oversized description without throwing', async () => {
+    const { listId } = await setup();
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 1.5, -1, '2026-01-01']) {
+      expect(await actions.updateCard({ cardId: card.id, dueDate: bad as unknown as number })).toEqual({
+        ok: false,
+        error: 'That due date isn’t valid.',
+      });
+    }
+    expect(await actions.updateCard({ cardId: card.id, description: 'x'.repeat(20_001) })).toEqual({
+      ok: false,
+      error: 'Description must be 20000 characters or fewer.',
+    });
+    expect((await actions.updateCard({ cardId: card.id, dueDate: null })).ok).toBe(true);
+  });
+
+  it('logs a combined title + due-date edit as two activity rows', async () => {
+    const { listId } = await setup();
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    expect(
+      (await actions.updateCard({ cardId: card.id, title: 'Renamed', dueDate: Date.now() })).ok,
+    ).toBe(true);
+    const types = (await t.db.select().from(schema.activity)).map((a) => a.type);
+    expect(types).toContain('field.changed');
+    expect(types).toContain('due.changed');
+  });
+});
+
+describe('archive (cards and boards)', () => {
+  it('archives a card off the board payload and restores it into the same list', async () => {
+    const { boardId, listId } = await setup();
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'Parked' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    expect((await actions.archiveCard({ cardId: card.id })).ok).toBe(true);
+
+    const { getBoardData } = await import('../_lib/queries');
+    const ownerActor = { userId: owner.id, tenantId: owner.tenantId };
+    const board = await getBoardData(t.db, boardId, ownerActor);
+    expect(board?.cards).toHaveLength(0);
+    expect(board?.archivedCardCount).toBe(1);
+    expect(must(board?.lists[0], 'list').cardCount).toBe(0);
+
+    const archived = await actions.listArchivedCards({ boardId });
+    expect(archived.ok && archived.cards.map((c) => c.id)).toEqual([card.id]);
+
+    expect((await actions.restoreCard({ cardId: card.id })).ok).toBe(true);
+    const after = await getBoardData(t.db, boardId, ownerActor);
+    expect(after?.cards.map((c) => c.id)).toEqual([card.id]);
+    expect(must(after?.cards[0], 'card').listId).toBe(listId);
+    const types = (await t.db.select().from(schema.activity)).map((a) => a.type);
+    expect(types).toContain('card.archived');
+    expect(types).toContain('card.restored');
+  });
+
+  it('an archived board is read-only for members until restored, and hidden behind archivedAt on Home', async () => {
+    const { boardId, listId } = await setup();
+    actAs(owner);
+    expect((await actions.archiveBoard({ boardId })).ok).toBe(true);
+    // Every content mutation refuses the archived board, owner or not.
+    expect((await actions.createList({ boardId, name: 'X' })).ok).toBe(false);
+    expect((await actions.createCard({ listId, title: 'X' })).ok).toBe(false);
+    expect((await actions.renameList({ listId, name: 'X' })).ok).toBe(false);
+    // It still opens, flagged archived, and Home carries the flag.
+    const { getBoardData, getHomeData } = await import('../_lib/queries');
+    const ownerActor = { userId: owner.id, tenantId: owner.tenantId };
+    expect((await getBoardData(t.db, boardId, ownerActor))?.archivedAt).not.toBeNull();
+    const home = await getHomeData(t.db, ownerActor);
+    expect(must(home[0]?.boards[0], 'home board').archivedAt).not.toBeNull();
+    // Administration still works — that's how it gets restored.
+    expect((await actions.restoreBoard({ boardId })).ok).toBe(true);
+    expect((await actions.createList({ boardId, name: 'Back' })).ok).toBe(true);
+  });
+
+  it('a plain member cannot archive or delete the board; a project owner can', async () => {
+    const { projectId, boardId } = await setup();
+    const member = { id: 'user-member', tenantId: 'default' };
+    actAs(owner);
+    registerDirectoryUser({ id: member.id, email: 'm@example.com', name: 'M' });
+    expect((await actions.addProjectMember({ projectId, userId: member.id })).ok).toBe(true);
+    expect((await actions.addBoardMember({ boardId, userId: member.id })).ok).toBe(true);
+    actAs(member);
+    expect((await actions.archiveBoard({ boardId })).ok).toBe(false);
+    expect((await actions.deleteBoard({ boardId })).ok).toBe(false);
+
+    // A project co-owner who is *not* a board member manages it (K.20).
+    const coOwner = { id: 'user-coowner', tenantId: 'default' };
+    registerDirectoryUser({ id: coOwner.id, email: 'co@example.com', name: 'Co' });
+    await t.db.insert(schema.projectMembers).values({
+      projectId,
+      userId: coOwner.id,
+      tenantId: 'default',
+      role: 'owner',
+      addedBy: owner.id,
+      createdAt: Date.now(),
+    });
+    actAs(coOwner);
+    expect((await actions.archiveBoard({ boardId })).ok).toBe(true);
+    expect((await actions.restoreBoard({ boardId })).ok).toBe(true);
+    expect((await actions.addBoardMember({ boardId, userId: coOwner.id })).ok).toBe(true);
+    expect((await actions.deleteBoard({ boardId })).ok).toBe(true);
+    expect(await t.db.select().from(schema.boards)).toHaveLength(0);
+  });
+});
+
+describe('board ownership, leaving, and promotion', () => {
+  const member = { id: 'user-member', tenantId: 'default' };
+
+  async function setupWithMember(): Promise<{ projectId: string; boardId: string; listId: string }> {
+    const ctx = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: member.id, email: 'm@example.com', name: 'M' });
+    expect((await actions.addProjectMember({ projectId: ctx.projectId, userId: member.id })).ok).toBe(
+      true,
+    );
+    expect((await actions.addBoardMember({ boardId: ctx.boardId, userId: member.id })).ok).toBe(true);
+    return ctx;
+  }
+
+  it('promotes a member to owner, after which the original owner may be removed', async () => {
+    const { boardId } = await setupWithMember();
+    actAs(owner);
+    expect(
+      (await actions.updateBoardMemberRole({ boardId, userId: member.id, role: 'owner' })).ok,
+    ).toBe(true);
+    expect((await actions.updateBoardMemberRole({ boardId, userId: member.id, role: 'owner' })).ok).toBe(
+      true,
+    ); // no-op
+    expect((await actions.removeBoardMember({ boardId, userId: owner.id })).ok).toBe(true);
+    const rows = await t.db.select().from(schema.boardMembers);
+    expect(rows).toHaveLength(1);
+    expect(must(rows[0], 'row').role).toBe('owner');
+    expect((await t.db.select().from(schema.activity)).map((a) => a.type)).toContain(
+      'member.role_changed',
+    );
+  });
+
+  it('refuses to demote the last owner', async () => {
+    const { boardId } = await setupWithMember();
+    actAs(owner);
+    expect(await actions.updateBoardMemberRole({ boardId, userId: owner.id, role: 'member' })).toEqual({
+      ok: false,
+      error: 'A board needs at least one owner — make someone else an owner first.',
+    });
+  });
+
+  it('a member can leave a board (unassigned from its cards); the sole owner cannot', async () => {
+    const { boardId, listId } = await setupWithMember();
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    expect((await actions.assignMember({ cardId: card.id, userId: member.id })).ok).toBe(true);
+
+    expect((await actions.leaveBoard({ boardId })).ok).toBe(false); // sole owner
+    actAs(member);
+    expect((await actions.leaveBoard({ boardId })).ok).toBe(true);
+    expect(await t.db.select().from(schema.boardMembers)).toHaveLength(1);
+    expect(await t.db.select().from(schema.cardAssignees)).toHaveLength(0);
+    const left = must(
+      (await t.db.select().from(schema.activity)).find((a) => a.type === 'member.removed'),
+      'left row',
+    );
+    expect(JSON.parse(left.payload ?? 'null')).toEqual({ userId: member.id, left: true });
+    actAs(outsider);
+    expect((await actions.leaveBoard({ boardId })).ok).toBe(false);
+  });
+
+  it('a member can leave a project (cascading to its boards); the sole owner cannot', async () => {
+    const { projectId, boardId } = await setupWithMember();
+    actAs(owner);
+    expect((await actions.leaveProject({ projectId })).ok).toBe(false);
+    actAs(member);
+    expect((await actions.leaveProject({ projectId })).ok).toBe(true);
+    expect(await t.db.select().from(schema.projectMembers)).toHaveLength(1);
+    expect(
+      (await t.db.select().from(schema.boardMembers)).some(
+        (m) => m.boardId === boardId && m.userId === member.id,
+      ),
+    ).toBe(false);
+  });
+
+  it('removing a project member who solely owned a board promotes the earliest remaining member', async () => {
+    const { projectId, boardId } = await setupWithMember();
+    // Make `member` the board's only owner, and give the board another
+    // plain member to inherit it.
+    const heir = { id: 'user-heir', tenantId: 'default' };
+    actAs(owner);
+    registerDirectoryUser({ id: heir.id, email: 'h@example.com', name: 'H' });
+    expect((await actions.addProjectMember({ projectId, userId: heir.id })).ok).toBe(true);
+    expect((await actions.addBoardMember({ boardId, userId: heir.id })).ok).toBe(true);
+    expect(
+      (await actions.updateBoardMemberRole({ boardId, userId: member.id, role: 'owner' })).ok,
+    ).toBe(true);
+    expect((await actions.leaveBoard({ boardId })).ok).toBe(true); // original owner steps off the board
+    expect((await actions.removeProjectMember({ projectId, userId: member.id })).ok).toBe(true);
+    const rows = await t.db.select().from(schema.boardMembers);
+    expect(rows).toHaveLength(1);
+    expect(must(rows[0], 'heir row')).toMatchObject({ userId: heir.id, role: 'owner' });
+  });
+});
+
+describe('comment edit/delete, label edit, checklist edit', () => {
+  const other = { id: 'user-other', tenantId: 'default' };
+
+  async function setupCard(): Promise<{ boardId: string; cardId: string }> {
+    const { projectId, boardId, listId } = await setup();
+    actAs(owner);
+    registerDirectoryUser({ id: other.id, email: 'o@example.com', name: 'Other' });
+    expect((await actions.addProjectMember({ projectId, userId: other.id })).ok).toBe(true);
+    expect((await actions.addBoardMember({ boardId, userId: other.id })).ok).toBe(true);
+    expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    harness.sentNotifications = [];
+    return { boardId, cardId: card.id };
+  }
+
+  it('authors edit their own comments only; owners may delete anyone’s', async () => {
+    const { cardId } = await setupCard();
+    actAs(other);
+    expect((await actions.addComment({ cardId, body: 'Original' })).ok).toBe(true);
+    const comment = must((await t.db.select().from(schema.comments))[0], 'comment');
+
+    actAs(owner);
+    expect(await actions.updateComment({ commentId: comment.id, body: 'Hijacked' })).toEqual({
+      ok: false,
+      error: 'You can only edit your own comments.',
+    });
+    actAs(other);
+    expect((await actions.updateComment({ commentId: comment.id, body: 'Edited' })).ok).toBe(true);
+    const edited = must((await t.db.select().from(schema.comments))[0], 'edited');
+    expect(edited.body).toBe('Edited');
+    expect(edited.updatedAt).toBeGreaterThanOrEqual(edited.createdAt);
+
+    // A reply hangs off it; deleting the parent (as the board owner —
+    // moderation) cascades the reply too.
+    actAs(owner);
+    expect((await actions.addComment({ cardId, body: 'Reply', parentId: comment.id })).ok).toBe(true);
+    expect(await t.db.select().from(schema.comments)).toHaveLength(2);
+    expect((await actions.deleteComment({ commentId: comment.id })).ok).toBe(true);
+    expect(await t.db.select().from(schema.comments)).toHaveLength(0);
+    const types = (await t.db.select().from(schema.activity)).map((a) => a.type);
+    expect(types).toContain('comment.edited');
+    expect(types).toContain('comment.deleted');
+  });
+
+  it('a plain member cannot delete someone else’s comment', async () => {
+    const { cardId } = await setupCard();
+    actAs(owner);
+    expect((await actions.addComment({ cardId, body: 'Owner says' })).ok).toBe(true);
+    const comment = must((await t.db.select().from(schema.comments))[0], 'comment');
+    actAs(other);
+    expect(await actions.deleteComment({ commentId: comment.id })).toEqual({
+      ok: false,
+      error: 'You can only delete your own comments.',
+    });
+    expect(await t.db.select().from(schema.comments)).toHaveLength(1);
+  });
+
+  it('notifies earlier commenters on a new top-level comment, once each', async () => {
+    const { cardId } = await setupCard();
+    actAs(other);
+    expect((await actions.addComment({ cardId, body: 'First' })).ok).toBe(true);
+    harness.sentNotifications = [];
+    actAs(owner);
+    expect((await actions.addComment({ cardId, body: 'Second' })).ok).toBe(true);
+    expect(harness.sentNotifications).toHaveLength(1);
+    expect(must(harness.sentNotifications[0], 'n')).toMatchObject({
+      recipientUserId: other.id,
+      title: 'New comment on a card you commented on',
+    });
+    // The commenter themselves never gets one, even with earlier comments.
+    harness.sentNotifications = [];
+    expect((await actions.addComment({ cardId, body: 'Third' })).ok).toBe(true);
+    expect(harness.sentNotifications.map((n) => n.recipientUserId)).toEqual([other.id]);
+  });
+
+  it('renames and recolors a label; rejects a non-curated colour', async () => {
+    const { boardId } = await setupCard();
+    actAs(owner);
+    expect((await actions.createLabel({ boardId, name: 'Bug', color: 'clay' })).ok).toBe(true);
+    const label = must((await t.db.select().from(schema.labels))[0], 'label');
+    expect(await actions.updateLabel({ labelId: label.id, color: '#ff0000' })).toEqual({
+      ok: false,
+      error: 'Pick a color for the label.',
+    });
+    expect((await actions.updateLabel({ labelId: label.id, name: 'Defect', color: 'ink' })).ok).toBe(
+      true,
+    );
+    expect(must((await t.db.select().from(schema.labels))[0], 'label')).toMatchObject({
+      name: 'Defect',
+      color: 'ink',
+    });
+    actAs(outsider);
+    expect((await actions.updateLabel({ labelId: label.id, name: 'X' })).ok).toBe(false);
+  });
+
+  it('edits a checklist item’s text and logs a reorder', async () => {
+    const { cardId } = await setupCard();
+    actAs(owner);
+    expect((await actions.createChecklistItem({ cardId, text: 'A' })).ok).toBe(true);
+    expect((await actions.createChecklistItem({ cardId, text: 'B' })).ok).toBe(true);
+    const item = must(
+      (await t.db.select().from(schema.checklistItems)).find((i) => i.text === 'A'),
+      'item',
+    );
+    expect((await actions.updateChecklistItem({ itemId: item.id, text: 'A2' })).ok).toBe(true);
+    expect(
+      (await t.db.select().from(schema.checklistItems)).find((i) => i.id === item.id)?.text,
+    ).toBe('A2');
+    const before = (await t.db.select().from(schema.activity)).length;
+    expect((await actions.moveChecklistItem({ itemId: item.id, direction: 'down' })).ok).toBe(true);
+    expect((await t.db.select().from(schema.activity)).length).toBe(before + 1);
+  });
+});
+
+describe('board data aggregates and board activity', () => {
+  it('counts assignees, checklist progress, and comments per card via aggregates', async () => {
+    const { boardId, listId } = await setup();
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'C1' })).ok).toBe(true);
+    const card = must((await t.db.select().from(schema.cards))[0], 'card');
+    expect((await actions.assignMember({ cardId: card.id, userId: owner.id })).ok).toBe(true);
+    expect((await actions.createChecklistItem({ cardId: card.id, text: 'a' })).ok).toBe(true);
+    expect((await actions.createChecklistItem({ cardId: card.id, text: 'b' })).ok).toBe(true);
+    const item = must((await t.db.select().from(schema.checklistItems))[0], 'item');
+    expect((await actions.toggleChecklistItem({ itemId: item.id, done: true })).ok).toBe(true);
+    expect((await actions.addComment({ cardId: card.id, body: 'one' })).ok).toBe(true);
+    expect((await actions.addComment({ cardId: card.id, body: 'two' })).ok).toBe(true);
+
+    const { getBoardData } = await import('../_lib/queries');
+    const board = await getBoardData(t.db, boardId, { userId: owner.id, tenantId: 'default' });
+    expect(must(board?.cards[0], 'summary')).toMatchObject({
+      assigneeCount: 1,
+      checklistDone: 1,
+      checklistTotal: 2,
+      commentCount: 2,
+    });
+    expect(board?.canManage).toBe(true);
+    expect(board?.visibility).toBe('public');
+  });
+
+  it('pages the board feed newest-first with card titles resolved', async () => {
+    const { boardId, listId } = await setup();
+    actAs(owner);
+    expect((await actions.createCard({ listId, title: 'Titled' })).ok).toBe(true);
+    const feed = await actions.getBoardActivity({ boardId });
+    if (!feed.ok) throw new Error(feed.error);
+    expect(feed.items[0]).toMatchObject({ type: 'card.created', cardTitle: 'Titled' });
+    expect(feed.items.map((i) => i.type)).toEqual(['card.created', 'list.created', 'board.created']);
+    expect(feed.nextCursor).toBeNull();
+    expect(feed.items.every((i) => typeof i.createdAt === 'number')).toBe(true);
   });
 });

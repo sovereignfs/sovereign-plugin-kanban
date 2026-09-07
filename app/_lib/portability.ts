@@ -3,6 +3,7 @@ import type { DeletionContext, DeletionResult } from '@sovereignfs/sdk';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { KanbanDb, KanbanTx } from '../_db/client';
 import * as schema from '../_db/schema';
+import { asMs } from './timestamps';
 
 export async function registerPortabilityHandlers(): Promise<void> {
   await sdk.portability.provideDelete(deleteAllKanbanData);
@@ -129,7 +130,7 @@ async function deleteAllKanbanData(ctx: DeletionContext): Promise<DeletionResult
       // for the same reason Docs/Sheets keep the identical check.
       const promotee =
         successors.find((m) => m.role === 'owner') ??
-        [...successors].sort((a, b) => a.createdAt - b.createdAt)[0];
+        [...successors].sort((a, b) => asMs(a.createdAt) - asMs(b.createdAt))[0];
       if (!promotee) continue;
       await db.transaction(async (tx) => {
         if (promotee.role !== 'owner') {
@@ -219,10 +220,10 @@ async function deleteAllKanbanData(ctx: DeletionContext): Promise<DeletionResult
 
     if (membership.role !== 'owner' || otherOwners.length > 0) {
       // Either a plain member, or an owner stepping down while a co-owner
-      // remains — `countProjectOwners`'s own last-owner invariant.
-      // Deliberately does not cascade to this user's board memberships
-      // under the project (`removeProjectMember`'s own documented
-      // behavior) — those were already resolved independently, above.
+      // remains — `countProjectOwners`'s own last-owner invariant. This
+      // user's board memberships under the project were already resolved
+      // by the boards loop above (with ownership succession), so no
+      // cascade is needed here.
       await db
         .delete(schema.projectMembers)
         .where(
@@ -240,7 +241,7 @@ async function deleteAllKanbanData(ctx: DeletionContext): Promise<DeletionResult
     if (otherNonOwners.length > 0) {
       // Last owner, but other members exist — promote the earliest-joined
       // one, mirroring `updateProjectMemberRole`'s own promote path.
-      const promotee = [...otherNonOwners].sort((a, b) => a.createdAt - b.createdAt)[0];
+      const promotee = [...otherNonOwners].sort((a, b) => asMs(a.createdAt) - asMs(b.createdAt))[0];
       if (!promotee) continue;
       await db.transaction(async (tx) => {
         await tx
@@ -269,10 +270,10 @@ async function deleteAllKanbanData(ctx: DeletionContext): Promise<DeletionResult
 
     // Sole project member. Before hard-deleting the project (which would
     // cascade every board under it away), check whether any board here is
-    // still independently owned by someone else entirely — reachable
-    // because `removeProjectMember` deliberately never cascades to board
-    // membership, so a person can hold real board ownership under a
-    // project they currently have no project-level membership on at all.
+    // still independently owned by someone else entirely. `removeProjectMember`
+    // now cascades board access, so this is only reachable through data
+    // that predates that change (or direct DB edits) — kept as a defensive
+    // floor since the alternative is silently cascading someone's board away.
     const projectBoards = await db
       .select({ id: schema.boards.id })
       .from(schema.boards)

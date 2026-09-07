@@ -1,6 +1,6 @@
 # Sovereign Kanban — Roadmap
 
-**Manifest version:** 0.26.0 · **Last updated:** 2026-08-28
+**Manifest version:** 0.27.0 · **Last updated:** 2026-09-07
 
 Chronological build index — one row per PR, platform-`ROADMAP.md` style. Full
 task detail lives in [SPEC.md](SPEC.md); the product concept in
@@ -59,9 +59,15 @@ rules and `SPEC.md`'s `K.17`–`K.22` for technical detail.
 | 0.18.0 | Project members & visibility schema          | ✅     | [K.17](SPEC.md#k17--project-members--visibility-schema)       |
 | 0.19.0 | Project & board access authz (view vs. edit) | ✅     | [K.18](SPEC.md#k18--project--board-access-authz-view-vs-edit) |
 | 0.20.0 | Project membership UI & sharing              | ✅     | [K.19](SPEC.md#k19--project-membership-ui--sharing)           |
-| 0.21.0 | Board membership UI & board visibility       | ⬜     | [K.20](SPEC.md#k20--board-membership-ui--board-visibility)    |
-| 0.22.0 | Read-only view mode (web)                    | ⬜     | [K.21](SPEC.md#k21--read-only-view-mode-web)                  |
-| 0.23.0 | Phase 2 hardening & verification pass        | ⬜     | [K.22](SPEC.md#k22--phase-2-hardening--verification-pass)     |
+| 0.27.0 | Board membership UI & board visibility       | ✅     | [K.20](SPEC.md#k20--board-membership-ui--board-visibility)    |
+| 0.27.0 | Read-only view mode (web)                    | ✅     | [K.21](SPEC.md#k21--read-only-view-mode-web)                  |
+| 0.28.0 | Phase 2 hardening & verification pass        | ⬜     | [K.22](SPEC.md#k22--phase-2-hardening--verification-pass)     |
+
+K.20 and K.21 shipped together in `0.27.0`'s review-driven pass (K.24
+below) rather than as their own slots — the review that prompted it found
+the viewer tier's *read* path broken (a viewer could open a board but not
+its cards), which is K.21's own foundation, so splitting them would have
+shipped a knowingly half-working state twice.
 
 ## Prioritization rationale
 
@@ -117,9 +123,13 @@ numbering above.
 | Slot   | Task                     | Status | Spec task                                     |
 | ------ | ------------------------ | ------ | --------------------------------------------- |
 | 0.26.0 | Account deletion handler | ✅     | [K.23](SPEC.md#k23--account-deletion-handler) |
+| 0.27.0 | Full-plugin review remediation | ✅     | [K.24](SPEC.md#k24--full-plugin-review-remediation) |
 
 ## Phase 2 candidates (not committed)
 
 Due-date reminder schedules (manifest `schedules`), attachments, card cover
-images, board templates, cross-board search, offline support. (Project-level
-membership and visibility graduated from this list — see "Phase 2" above.)
+images, board templates, cross-board search, offline support, @-mentions in
+comments (no mention parsing exists anywhere in this plugin yet).
+(Project-level membership and visibility graduated from this list — see
+"Phase 2" above; card/board archive, comment editing, label editing, board
+descriptions, and the board activity feed graduated in `0.27.0`'s K.24.)

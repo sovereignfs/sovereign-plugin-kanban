@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "fs.sovereign.kanban",
   "name": "Kanban",
-  "version": "0.26.2",
+  "version": "0.27.0",
   "description": "A minimalist, sovereign alternative to Trello — projects, boards, lists, and cards.",
   "type": "sovereign",
   "runtime": "native",
@@ -12,6 +12,6 @@
   "permissions": ["auth:session", "db:readWrite", "notifications:send"],
   "repository": "https://github.com/sovereignfs/sovereign-plugin-kanban",
   "compatibility": {
-    "minPlatformVersion": "0.94.0"
+    "minPlatformVersion": "0.103.0"
   }
 }

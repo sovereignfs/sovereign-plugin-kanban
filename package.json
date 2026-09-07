@@ -16,8 +16,10 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
-    "@sovereignfs/tsconfig": "workspace:*",
     "@libsql/client": "^0.15.15",
+    "@sovereignfs/tsconfig": "workspace:*",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "drizzle-kit": "^0.31.10",

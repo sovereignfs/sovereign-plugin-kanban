@@ -7,19 +7,26 @@ cards — built as an installable plugin for the
 
 ## Features
 
-- **Projects → Boards → Lists → Cards** hierarchy, with full create/rename/
-  archive management at every level.
+- **Projects → Boards → Lists → Cards** hierarchy, with full create, rename,
+  archive, and delete management at every level.
 - **Drag-and-drop reorder**, whole-card/whole-list, no drag handles — click
   vs. drag is disambiguated by pointer activation distance on web, and by
   long-press vs. swipe on mobile. Fully keyboard-accessible (Space to lift,
   arrow keys to move, Space to drop, per dnd-kit's `KeyboardSensor`).
-- **Card detail**: description, labels, assignees, due date, checklist,
-  threaded comments, and an audit-style activity log — all in one dialog on
-  web, a full-screen view on mobile.
+- **Card detail**: description (Markdown), labels, assignees, due date with
+  overdue/due-soon states, checklist, threaded comments you can edit and
+  delete, and an audit-style activity log — all in one dialog on web, a
+  full-screen view on mobile.
+- **Archive instead of delete**: park a card or a whole board out of the way
+  and restore it later; delete stays available behind its own confirmation.
+- **Read-only viewing**: project owners and members of a public project see
+  a board in full with every editing control hidden, rather than being
+  locked out or handed controls that fail.
 - **Inbox**: a per-user feed of cards assigned to you and replies to your own
   comments, with unread tracking. (@-mentions aren't implemented yet — no
   mention parsing exists in this plugin.)
-- **Board sharing** by invite, with owner/member roles.
+- **Board sharing** by invite, with owner/member roles, co-owners, and a
+  board-level activity feed.
 - Responsive: a dedicated mobile layout (swipeable list carousel, custom
   footer navigation) sharing the same data layer as web — see
   [`CONCEPT.md`](CONCEPT.md)'s interaction-model table for the exact web vs.
@@ -27,7 +34,7 @@ cards — built as an installable plugin for the
 
 See [`CONCEPT.md`](CONCEPT.md) for the full product concept and
 [`SPEC.md`](SPEC.md) for the technical design, data model, and the complete
-`K.1`–`K.16` task history (including real bugs found and fixed along the way).
+`K.1`–`K.24` task history (including real bugs found and fixed along the way).
 
 ## Permissions
 

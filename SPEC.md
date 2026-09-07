@@ -3375,19 +3375,31 @@ project members or promote a co-owner; visibility toggle persists.
   originally listed as a separate deliverable here, but required by this
   repo's own "route/UI gating is never sufficient" convention once the
   picker stopped being the only path to calling that action.
-- ⬜ Board-membership management stays open to that board's own owner(s)
-  and is additionally opened to any project owner.
-- ⬜ Board visibility toggle (`public`/`private`) in the board options menu.
+- ✅ Board-membership management stays open to that board's own owner(s)
+  and is additionally opened to any project owner. Shipped in `0.27.0`
+  (K.24) as `requireBoardManager()` — the single check every
+  administration action (settings, membership, archive, delete) now runs,
+  replacing `requireBoardOwner`. Content mutations are deliberately
+  unchanged: a project owner who isn't a board member still cannot add a
+  list or edit a card (CONCEPT.md's rule), only administer the board.
+  Boards also gained co-owners (`updateBoardMemberRole`), with the same
+  last-owner invariant projects already had, plus `leaveBoard`.
+- ✅ Board visibility toggle (`public`/`private`) in board settings.
+  Shipped in `0.27.0` (K.24) — a `SegmentedControl` in
+  `BoardSettingsDialog`, the same shape the project dialog already used,
+  rather than a menu entry: it's a setting saved with the rest, not a
+  one-off action.
 
 **Dependencies:** K.19.
 
 **Review checklist:** adding a non-project-member to a board is impossible
-through the UI (picker never lists them) — ✅ done, and also now
-impossible through the action directly, a stronger guarantee than this
-checklist item asked for; a project owner who isn't a board owner can
-still add/remove that board's members — ⬜ not yet; visibility toggle
-persists and is reflected in K.18's access checks immediately — ⬜ not yet.
-Task stays ⬜ in `ROADMAP.md` until the remaining two deliverables ship.
+through the UI (picker never lists them) — ✅ done, and also impossible
+through the action directly, a stronger guarantee than this checklist item
+asked for; a project owner who isn't a board owner can still add/remove
+that board's members — ✅ done; visibility toggle persists and is reflected
+in K.18's access checks immediately — ✅ done (covered by
+`actions.test.ts`'s own "rejects an unknown project or board visibility"
+and the K.18 access tests).
 
 ---
 
@@ -3417,6 +3429,32 @@ board (lists, cards, checklist, comments, activity) with zero console
 errors and zero visible mutation affordances; attempting a mutation via
 direct action call (not just the hidden UI) still gets denied server-side
 by K.18's unchanged edit gates.
+
+**Shipped in `0.27.0` (K.24).** Two things had to happen before the
+affordance-hiding half was worth doing:
+
+1. **The read path was broken.** `getBoardData` resolved the `'viewer'`
+   tier, but `getCardDetail` still inner-joined `kanban_board_members` —
+   so a viewer could open a board and see its cards, but clicking one
+   rendered nothing at all, and every `?card=` deep link (from a
+   notification or the Inbox) landed on a bare board with no overlay and
+   no error. `getMoreCardActivity` had the same gap. Fixed by moving the
+   whole three-tier resolution into one place — `authz.ts`'s
+   `getBoardAccess()` — which `getBoardData`, `getCardDetail`,
+   `requireCardView`, and every read action now share.
+2. **`canEdit` is one flag, computed once**, in `BoardView`
+   (`role !== 'viewer' && !archived`), threaded through `ListColumn`,
+   `CardTile`/`MobileCardTile`, `MobileListSlide`, `CardDetailOverlay`
+   and every card field component. Drag is disabled by passing an empty
+   `sensors` array (the same total kill switch K.10 already used while
+   filtering) *and* `disabled` on each `useSortable`, so no activator is
+   registered anywhere in a read-only tree.
+
+A viewer sees a one-line banner saying why (`.readOnlyBanner`), and Home
+marks such boards "View only" on the tile itself rather than letting the
+click be the first hint. The same `canEdit` false path also covers an
+**archived** board, which is read-only for everyone including its owner —
+that's what makes archive safe as the reversible alternative to delete.
 
 ---
 
@@ -3477,3 +3515,151 @@ for the full design writeup.
 transfer, sole-member hard-delete with cascade, project co-owner removal,
 last-owner promotion, the nested board-owner-bystander case, and
 `kanban_inbox_state` cleanup.
+
+---
+
+#### K.24 — Full-plugin review remediation
+
+**Goal:** Close every issue found in a full-plugin review (correctness,
+security, UX, and the Trello-parity gaps that had accumulated), and finish
+K.20/K.21 in the same pass since the review's most severe finding was
+K.21's own foundation.
+
+**Deliverables (all shipped, `0.27.0`):**
+
+_Correctness_
+
+- **Postgres timestamps read as strings.** Application code queries through
+  the sqlite-core schema on both dialects; `0.17.1` moved every Postgres
+  timestamp column to `bigint` (plain `integer` overflows on a Unix-ms
+  value), and node-postgres returns `int8` as a **string**. The sqlite-core
+  `integer` column has no driver-value mapping, so those strings passed
+  straight through into `dueDate`/`createdAt`/`lastSeenAt`. Consequences on
+  any Postgres instance: card tiles and the due-date field rendered
+  "Invalid Date", and `Intl.DateTimeFormat` **threw a `RangeError`** from
+  the Inbox's day grouping and `timeAgo`'s >30-day branch — a crashed
+  Inbox page, not a cosmetic bug. `0.17.1` verified writes only; this is
+  the read half of the same incident. Fixed with `_lib/timestamps.ts`
+  (`asMs`/`asMsOrNull`) applied at every read boundary in `queries.ts` and
+  `portability.ts`, with a unit test feeding the helpers the exact string
+  shapes a Postgres row produces (and asserting the raw string still makes
+  `dayLabel` throw, documenting *why* the coercion exists).
+- **Viewer card access** — see K.21 above.
+- **Project removal left orphaned board access.** `removeProjectMember`
+  deliberately didn't cascade, but `getHomeData` only lists boards under
+  projects you belong to — so a removed member kept full edit access to
+  boards that had silently vanished from their Home page, reachable by
+  URL. Removal (and the new `leaveProject`) now cascade to every board in
+  that project, unassign the person from its cards, record a
+  `member.removed` row per board, and promote a successor on any board
+  left ownerless.
+- **`minPlatformVersion` was `0.94.0`** while the plugin used
+  `Dialog size="auto"` (platform `0.103.0`), `sdk.notifications.list`
+  (`0.96.0`) and `ColorPicker` (`0.95.1`) — an install on a `0.94`–`0.102`
+  instance would have failed at render, not at install. Now `0.103.0`.
+- **Label chips were unreadable on the dark swatches.** Ink/forest/wine/
+  charcoal/plum were added to `BOARD_COLORS` for *boards*, but the label
+  picker offers the whole array and `.labelChip` hardcoded
+  `--sv-color-text-primary`. `labelChipClassName()` now picks the
+  theme-invariant on-fill token per swatch, the same way the board canvas
+  already did.
+- **Delete-list confirmation counted filtered cards** ("its 1 card" for a
+  list of many while a search was active) — it now reads `list.cardCount`.
+- **Validation on the plain actions**, not just the form wrappers: board
+  colour, project/board visibility, a due date that must be a real
+  Unix-ms integer (a string previously reached the DB and a `NaN` was
+  stored), and a description length cap. A form wrapper is a convenience;
+  the action itself is the public endpoint.
+- **Swapping the dnd-kit `sensors` array to disable dragging logged a React
+  error on every keystroke boundary.** `DndContext` spreads `sensors` into a
+  `useEffect` dependency array internally, so K.10's "empty array as a total
+  kill switch" (kept, and extended to viewers, in the first pass of this
+  task) changed that array's *size* between renders — "The final argument
+  passed to useEffect changed size between renders" every time a board
+  search was typed or cleared. Found only in the live browser console: it
+  throws no exception, breaks no behaviour, and no test asserts on console
+  output. Dragging is now switched off per item instead
+  (`useSortable({ disabled })` in `ListColumn`/`CardTile`, plus a
+  `dragEnabled` prop distinct from `canEdit` so a search hides no editing
+  affordance), with the sensors array constant on both surfaces. Verified
+  live afterwards: six filter toggles with zero React errors, a drag that
+  refuses to start while filtering, and one that still works when cleared.
+- Rename fields (`ListColumn`, `MobileListSlide`, card title) resync when
+  the underlying name changes; `CardDetailOverlay` is keyed by card id so
+  switching cards can't carry a draft across; card tiles no longer let
+  dnd-kit's `role="button"` override their link semantics; a malformed
+  activity payload degrades to `null` instead of throwing.
+
+_Performance_
+
+- Board aggregates (assignees, checklist, comments) are `COUNT`/`SUM`
+  group-bys joined on `board_id` — the comment count previously fetched
+  **one row per comment on the board** purely to count them, and every
+  aggregate shipped one bind parameter per card.
+- The Inbox's reply query was "fetch every comment id the actor has ever
+  written, then `inArray` them" — unbounded, and run on **every
+  navigation** via `hasUnseenInboxActivity`. Now one indexed self-join
+  (`repliesToActor`), `LIMIT 1` for the badge.
+- `getHomeData`/`hasUnseenInboxActivity` are request-memoized
+  (`_lib/request-cache.ts`, React `cache()`), so the root layout, the home
+  layout and the page share one round trip instead of three.
+- Checklist toggles, label attach/detach and assignee changes are
+  optimistic — they used to wait on a full board RSC re-render (0.5–1.6s
+  observed).
+- `AppsMenu` no longer fetches `/api/plugins` on every open: the layout
+  already had the list from `sdk.plugins.list()` for the mobile drawer.
+
+_Features and UX_
+
+- **Card and board archive** (`archived_at` on both, one migration per
+  dialect) — the reversible alternative to delete, with a board-menu
+  "Archived cards" panel and a Home disclosure for archived boards. An
+  archived board is read-only for everyone until restored.
+- **Board activity feed** — every `list.*`/`member.*`/`board.*` row was
+  already being recorded and had never been rendered anywhere.
+  `describeActivity` gained a `'board'` scope that names the card each row
+  is about (falling back to the title captured in the payload for a
+  deleted card).
+- **Comment edit and delete** (authors; board owners may delete anyone's,
+  with an "edited" marker), **label rename/recolor**, **checklist item
+  editing**, **board descriptions**, **leave board / leave project**,
+  **board co-owners**, and thread-participant comment notifications.
+- **Due-date state** on tiles and in the card header (overdue / today /
+  soon), the card's list and creator shown in its header, `message-square`
+  for the comment count instead of `mail`, confirmations on member
+  removal, a hint explaining why drag is paused during a search, a
+  `<time>` element with an absolute-timestamp tooltip, per-route
+  `generateMetadata` (the tab title now names the board), and a
+  board-scoped `not-found.tsx` instead of the platform 500-style 404.
+- Four new curated icons (`message-square`, `archive`, `archive-restore`,
+  `clock`) added via the platform's `scripts/icon-list.ts` + `pnpm
+  generate:icons` path.
+
+**Verification:** `pnpm --filter sovereign-plugin-kanban typecheck`,
+`pnpm exec eslint`, `pnpm exec prettier --check`, `pnpm design:tokens:check`,
+`pnpm --filter runtime build` (composed plugin routes — a plain typecheck
+never compiles them) and the full Vitest suite — 183 tests (48 new: the
+viewer read path, the timestamp coercion, archive, ownership/leaving,
+comment and label editing, board activity, the new validation, and this
+plugin's first component tests, which assert a viewer sees content but no
+affordance).
+
+Then a live browser pass against the dev server on seeded data, which is
+what caught the `sensors` React error above. Confirmed live: the archived-
+board disclosure and its restore; the board menu's five entries with the
+archived count; an archive → restore round trip putting a card back in its
+own list; due-date colouring against the real calendar (overdue / today /
+soon / neutral); the card overlay's list-and-creator line; comment editing
+persisting with its "edited" marker; label recolour to a dark swatch
+rendering light text; the board activity feed naming each card and
+rendering board-level rows that had never been displayed before; the search
+filter with highlighting and its drag-paused hint; board settings saving
+the new visibility flag with a `board.updated` activity row; and, as a
+viewer, a board that renders in full with a read-only banner, a menu
+reduced to Activity and Archived cards, and a card overlay containing zero
+buttons beyond Close and the two tabs — the case that previously rendered
+nothing at all.
+
+**Not done (deliberate):** K.22's two-user end-to-end visibility-matrix
+verification is still its own task — this pass verified the matrix through
+unit tests and a single-user browser session, not a second real account.

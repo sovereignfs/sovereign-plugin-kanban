@@ -2716,3 +2716,203 @@
   flex-direction: column;
   gap: var(--sv-space-2);
 }
+
+/* --- Read-only mode, archive, due-date states, label contrast ------------ */
+
+/* K.21 — the one-line notice a viewer (or anyone on an archived board, or
+   an archived card) sees explaining why nothing is editable. Sits on the
+   neutral surface between the toolbar and the canvas, never on the board
+   colour. Also hosts an inline Restore button on an archived card. */
+.readOnlyBanner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sv-space-2);
+  padding: var(--sv-space-2) var(--sv-space-8);
+  color: var(--sv-color-text-muted);
+  background-color: var(--sv-color-surface-sunken);
+  border-bottom: 1px solid var(--sv-color-border);
+}
+
+.cardOverlayBody .readOnlyBanner {
+  width: 100%;
+  padding: var(--sv-space-2) var(--sv-space-3);
+  border: 1px solid var(--sv-color-border);
+  border-radius: var(--sv-radius-md);
+}
+
+/* K.10 — drag is a silent no-op while searching; say so. */
+.filterHint {
+  display: block;
+  padding: 0 var(--sv-space-8) var(--sv-space-2);
+  color: var(--sv-color-text-muted);
+}
+
+.boardTitleBlock {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: 40%;
+}
+
+/* One-line board description under the toolbar title, truncated — the
+   full text is in the `title` tooltip and the settings dialog. */
+.boardDescription {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--sv-color-text-muted);
+}
+
+/* Due-date states on tiles and in the card header — overdue in the error
+   colour, due today/soon in the warning colour; a comfortably-future date
+   keeps the neutral muted meta colour. */
+.cardMetaDueOverdue {
+  color: var(--sv-color-error-text);
+  font-weight: 500;
+}
+
+.cardMetaDueToday {
+  color: var(--sv-color-warning-text);
+  font-weight: 500;
+}
+
+.cardMetaDueSoon {
+  color: var(--sv-color-warning-text);
+}
+
+.dueBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sv-space-1);
+  font-size: var(--sv-font-size-sm);
+}
+
+/* Label chips on the darker swatches (ink, forest, wine, charcoal, plum)
+   need light text — `--sv-color-text-on-dark-fill` is theme-invariant, so
+   this reads the same in light and dark mode, same as the board canvas's
+   own empty-state treatment. */
+.labelChipOnDark {
+  color: var(--sv-color-text-on-dark-fill);
+}
+
+.labelEditRow {
+  padding: var(--sv-space-2) 0;
+}
+
+.labelEditor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sv-space-2);
+}
+
+/* K.21 — "View only" pill on a Home tile the actor can open but not edit. */
+.viewOnlyBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sv-space-1);
+  margin-top: var(--sv-space-1);
+  font-size: var(--sv-font-size-xs);
+  color: var(--sv-color-text-muted);
+}
+
+.boardCardFooter {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.boardCardDescription {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--sv-color-text-muted);
+}
+
+/* Archived boards disclosure under a project's grid. */
+.archivedBoards {
+  margin-top: var(--sv-space-3);
+}
+
+.archivedBoardsToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sv-space-1);
+  padding: var(--sv-space-1) 0;
+  border: 0;
+  background: none;
+  color: var(--sv-color-text-muted);
+  cursor: pointer;
+}
+
+.archivedBoardsToggle:hover {
+  color: var(--sv-color-text-primary);
+}
+
+.archivedBoardList,
+.archivedCardList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.archivedCardRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sv-space-3);
+  padding: var(--sv-space-2) 0;
+  border-bottom: 1px solid var(--sv-color-border);
+}
+
+.archivedCardRow:last-child {
+  border-bottom: 0;
+}
+
+.archivedBoardLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sv-space-2);
+  min-width: 0;
+  color: var(--sv-color-text-primary);
+  text-decoration: none;
+}
+
+.archivedBoardLink:hover {
+  text-decoration: underline;
+}
+
+/* Card header: Archive + Delete icon buttons share the top-right corner. */
+.cardHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: var(--sv-space-1);
+  align-self: flex-start;
+  margin-top: calc(var(--sv-space-1) * 1.5);
+}
+
+.cardTitleReadOnly {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* "In "To Do" · created by … on …" — full-width line under the title row. */
+.cardSubtitle {
+  flex-basis: 100%;
+  color: var(--sv-color-text-muted);
+}
+
+.commentEdited {
+  color: var(--sv-color-text-subtle);
+}
+
+.leaveRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sv-space-3);
+}
