@@ -10,7 +10,6 @@
  * strings; nothing downstream of this file should ever have to know.
  */
 import { and, asc, count, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/sqlite-core';
 import { sdk } from '@sovereignfs/sdk';
 import type { KanbanDb } from '../_db/client';
 import * as schema from '../_db/schema';
@@ -753,9 +752,41 @@ export interface InboxFeed {
   members: MemberIdentity[];
 }
 
-/** Replies (by someone else) to comments the actor wrote — one indexed self-join, bounded by `limit`. */
-function repliesToActor(db: KanbanDb, actor: Actor, limit: number) {
-  const parent = alias(schema.comments, 'parent');
+/**
+ * Replies (by someone else) to comments the actor wrote — one indexed
+ * subquery, bounded by `limit`.
+ *
+ * Deliberately an `inArray(parentId, subquery)`, not a self-join via
+ * `alias(schema.comments, 'parent')`. That self-join is correct SQL on
+ * SQLite (the query builder dialect renders `alias()`'d joins for any
+ * object branded `SQLiteTable`, which `schema.comments` is), but breaks on
+ * Postgres in production: `drizzle-orm/pg-core`'s join compiler only knows
+ * how to render a table's `AS <alias>` for objects branded `PgTable`
+ * (`pg-core/dialect.cjs`'s `buildJoins`) — a sqlite-core table aliased via
+ * sqlite-core's own `alias()` fails that brand check and falls through to a
+ * generic branch that interpolates the aliased object directly, silently
+ * dropping the base table reference. The result was a real query —
+ * `inner join "parent" on "parent"."id" = ...` — referencing a table named
+ * literally "parent" that doesn't exist (Postgres error 42P01), invisible
+ * in local dev (SQLite) and only surfacing against a deployed Postgres
+ * instance. A scalar `IN (subquery)` needs no table aliasing at all — it's
+ * embedded as `(select "id" from ...)` via `sql`'s generic `SQLWrapper`
+ * handling, identically on both dialects — see
+ * `__tests__/timestamps.test.ts`'s sibling note on this file's other
+ * dialect-only failure mode for why cross-dialect SQL needs verifying
+ * against the real compiler, not just SQLite's.
+ * Exported (only) so `__tests__/postgres-dialect.test.ts` can compile this
+ * query against the real `PgDialect` and assert on its SQL text — the one
+ * way to catch this class of bug (valid on SQLite, broken on Postgres)
+ * without a live Postgres instance, which this repo's test harness doesn't
+ * have (`_db/__tests__/test-db.ts` is SQLite/libsql-only, matching
+ * `docs/plugin-database.md`'s "no Postgres test harness" convention).
+ */
+export function repliesToActor(db: KanbanDb, actor: Actor, limit: number) {
+  const myCommentIds = db
+    .select({ id: schema.comments.id })
+    .from(schema.comments)
+    .where(and(eq(schema.comments.authorId, actor.userId), eq(schema.comments.tenantId, actor.tenantId)));
   return db
     .select({
       id: schema.comments.id,
@@ -764,13 +795,8 @@ function repliesToActor(db: KanbanDb, actor: Actor, limit: number) {
       createdAt: schema.comments.createdAt,
     })
     .from(schema.comments)
-    .innerJoin(parent, eq(parent.id, schema.comments.parentId))
     .where(
-      and(
-        eq(parent.authorId, actor.userId),
-        eq(parent.tenantId, actor.tenantId),
-        ne(schema.comments.authorId, actor.userId),
-      ),
+      and(inArray(schema.comments.parentId, myCommentIds), ne(schema.comments.authorId, actor.userId)),
     )
     .orderBy(desc(schema.comments.createdAt))
     .limit(limit);

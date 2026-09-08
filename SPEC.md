@@ -7,6 +7,57 @@
 
 ## Status
 
+**`0.27.0` → `0.27.1` fixes a real Postgres-only production bug, reported
+directly by a user who deployed `0.27.0` and hit a hard 500 the moment the
+Inbox (or any layout, since the sidebar's unseen-badge query hits the same
+code) rendered: `error: relation "parent" does not exist` (Postgres error
+42P01) out of `getInboxFeed`'s reply query. Root cause: K.24's rewrite of
+the Inbox's "replies to my comments" query replaced the old two-round-trip
+lookup with a single self-join, built with
+`alias(schema.comments, 'parent')` from `drizzle-orm/sqlite-core` —
+correct SQL on SQLite (its dialect compiler renders an `alias()`'d join for
+any object branded `SQLiteTable`, which a `sqlite-core` table always is,
+regardless of which physical database the connection targets), but on
+Postgres, `drizzle-orm/pg-core`'s own join compiler (`buildJoins` in
+`pg-core/dialect.cjs`) only knows how to render a table's `AS <alias>`
+clause for objects branded `PgTable` — a `sqlite-core` table aliased via
+`sqlite-core`'s own `alias()` fails that brand check and falls through to a
+generic branch that interpolates the aliased object directly, silently
+**dropping the base table reference entirely**. The query that actually
+reached Postgres was `inner join "parent" on "parent"."id" = ...` — a
+literal reference to a table named "parent" that has never existed. This
+is a genuine gap in this plugin's (and `docs/plugin-database.md`'s) own
+"one sqlite-core schema serves both dialects since the query builder is
+bound to the connection, not the table object" claim — true for every
+plain, un-aliased join already in this codebase (verified directly: see
+below), but not for `alias()`, which nothing here had used before K.24.
+Invisible in local dev (this repo's test harness is SQLite/libsql-only,
+`docs/plugin-database.md`) and only surfacing against a real deployed
+Postgres instance — the user's own report was the first signal.
+
+Fixed by dropping the self-join entirely: `repliesToActor` now expresses
+"replies to comments I authored" as `inArray(comments.parentId, subquery)`
+— a scalar `IN (select ...)` needs no table aliasing at all, since it's
+embedded as a plain sub-`SELECT` via `drizzle`'s generic `SQLWrapper`
+handling (`isSQLWrapper`: any object exposing `getSQL()`), identically on
+both dialects. Verified against the real `PgDialect` compiler with no live
+Postgres connection (`drizzle.mock()` from `drizzle-orm/node-postgres`,
+`.toSQL()`) — confirmed the fixed query compiles to
+`... where ("kanban_comments"."parent_id" in (select "id" from
+"kanban_comments" where (...)) and ...)`, and separately confirmed every
+*other* join in this codebase (all plain, un-aliased) compiles correctly
+on Postgres too, so this was an isolated regression, not a wider
+cross-dialect gap. New `__tests__/postgres-dialect.test.ts` — three tests
+compiling `repliesToActor` against the real Postgres dialect and asserting
+on its SQL text, including one that asserts the query never contains
+`join "parent"` again; confirmed live that reverting the fix makes exactly
+those two tests fail with the original bug's own SQL string, so this is a
+real regression guard, not a tautology. Manifest bumped to `0.27.1`; the
+rest of K.24's `0.27.0` changes are unaffected (`hasUnseenInboxActivity`
+shares the same helper and is fixed by the same change). Full suite: 186
+tests (183 + 3 new), clean `pnpm typecheck`/`pnpm exec eslint`/
+`pnpm exec prettier --check`/`pnpm design:tokens:check`.
+
 **Account deletion handler (K.23, `sdk.portability.provideDelete()`) — a
 standalone platform-integration task, not part of the Phase 1/2 feature
 numbering above.** This plugin registered no deletion handler at all
