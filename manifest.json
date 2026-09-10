@@ -9,11 +9,7 @@
   "routePrefix": "/kanban",
   "shell": "minimal",
   "icon": "icon.svg",
-  "permissions": [
-    "auth:session",
-    "db:readWrite",
-    "notifications:send"
-  ],
+  "permissions": ["auth:session", "db:readWrite", "notifications:send"],
   "repository": "https://github.com/sovereignfs/sovereign-plugin-kanban",
   "compatibility": {
     "minPlatformVersion": "0.103.0"
